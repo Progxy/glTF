@@ -166,10 +166,10 @@ void append_n_bytes(BitStream* bit_stream, unsigned char* data, unsigned int len
     return;
 }
 
-void read_until(BitStream* bit_stream, char symbol, char** data) {
+void read_until(BitStream* bit_stream, char* symbols, char** data) {
     unsigned int size = 0;
     get_next_byte(bit_stream); // Start the reading
-    while ((bit_stream -> current_byte) != symbol) {
+    while (!is_contained(bit_stream -> current_byte, (unsigned char*) symbols, sizeof(symbols))) {
         if (data != NULL) {
             (*data)[size] = bit_stream -> current_byte;
             size++;
