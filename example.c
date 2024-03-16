@@ -8,7 +8,7 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    debug_print(YELLOW, "Loading: %s\n", argv[1]);
+    decode_model(argv[1]);
     
     return 0;
 }
