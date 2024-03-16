@@ -90,7 +90,7 @@ void debug_print(Colors color, const char* format, ...) {
         return;
     }
     
-    printf("DEBUG: ");
+    printf("DEBUG_INFO: ");
     va_list args;
     va_start (args, format);
     vprintf (format, args);

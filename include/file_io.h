@@ -32,11 +32,11 @@ bool read_file(File* file_data) {
         return TRUE;
     }
 
-    debug_print("read %u bytes from %s\n", read_bytes, file_data -> file_path);
+    debug_print(YELLOW, "read %u bytes from %s\n", read_bytes, file_data -> file_path);
 
     fclose(file);
 
     return FALSE;
 }
 
-#endif _FILE_IO_H_
+#endif //_FILE_IO_H_
