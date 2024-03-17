@@ -193,4 +193,9 @@ void read_until(BitStream* bit_stream, char* symbols, char** data) {
     return;
 }
 
+void skip_back(BitStream* bit_stream, unsigned int n) {
+    bit_stream -> byte -= n;
+    bit_stream -> current_byte = (bit_stream -> stream)[bit_stream -> byte];
+}
+
 #endif //_BIT_STREAM_H_
