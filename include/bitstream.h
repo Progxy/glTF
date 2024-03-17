@@ -184,7 +184,11 @@ void read_until(BitStream* bit_stream, char* symbols, char** data) {
         get_next_byte(bit_stream);
     }
     
-    if (data != NULL) (*data) = (char*) realloc(*data, size * sizeof(char));
+    if (data != NULL) {
+        (*data)[size] = '\0';
+        size++;
+        (*data) = (char*) realloc(*data, size * sizeof(char));
+    }
     
     return;
 }
