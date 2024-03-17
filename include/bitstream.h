@@ -3,6 +3,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include "./debug_print.h"
 #include "./types.h"
 
@@ -169,14 +170,22 @@ void append_n_bytes(BitStream* bit_stream, unsigned char* data, unsigned int len
 void read_until(BitStream* bit_stream, char* symbols, char** data) {
     unsigned int size = 0;
     get_next_byte(bit_stream); // Start the reading
-    while (!is_contained(bit_stream -> current_byte, (unsigned char*) symbols, sizeof(symbols))) {
+    
+    while (!is_contained(bit_stream -> current_byte, (unsigned char*) symbols, strlen(symbols))) {
+        if (bit_stream -> error) {
+            return;
+        }
+
         if (data != NULL) {
             (*data)[size] = bit_stream -> current_byte;
             size++;
         }
+        
         get_next_byte(bit_stream);
     }
+    
     if (data != NULL) (*data) = (char*) realloc(*data, size * sizeof(char));
+    
     return;
 }
 
