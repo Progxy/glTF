@@ -101,6 +101,7 @@ static void read_array(BitStream* bit_stream, Object* objects) {
 
     if (collection_type == NUMBER || collection_type == STRING) {
         while (bit_stream -> current_byte != ']') {
+            if (bit_stream -> error) return;
             Object child_obj = (Object) { .children = NULL, .children_count = 0, .parent = objects, .identifier = NULL, .obj_type = collection_type };
             child_obj.value = calloc(350, sizeof(char));
             read_until(bit_stream, ",]", (char**) &(child_obj.value));
@@ -109,9 +110,15 @@ static void read_array(BitStream* bit_stream, Object* objects) {
         }
     } else if (collection_type == DICTIONARY || collection_type == ARRAY) {
         while (bit_stream -> current_byte != ']') {
-            if (collection_type == DICTIONARY) read_dictionary(bit_stream, objects);
-            else read_array(bit_stream, objects);
+            if (bit_stream -> error) return;
+            char* child = (char*) calloc(350, sizeof(char));
+            int len = snprintf(child, 350, "%s child-%u", objects -> identifier, objects -> children_count);
+            child = (char*) realloc(child, sizeof(char) * (len + 1));
+            Object child_obj = (Object) { .children = NULL, .children_count = 0, .parent = objects, .identifier = child, .obj_type = collection_type };
+            if (collection_type == DICTIONARY) read_dictionary(bit_stream, &child_obj);
+            else read_array(bit_stream, &child_obj);
             read_until(bit_stream, ",]", NULL);
+            append_obj(objects, child_obj);
         }
     } else {
         error_print("Invalid object type: %s.\n", objs_types[collection_type]);
@@ -124,8 +131,8 @@ static void read_array(BitStream* bit_stream, Object* objects) {
 
 static void read_dictionary(BitStream* bit_stream, Object* objects) {
     while (bit_stream -> current_byte != '}') {
+        if (bit_stream -> error) return;
         read_identifier(bit_stream, objects);
-        skip_back(bit_stream, 1); // Skip back to , if there's
         read_until(bit_stream, ",}", NULL);
     }
     debug_print(YELLOW, "'%s' now contains %u elements\n", objects -> identifier, objects -> children_count);
@@ -152,7 +159,7 @@ static void read_identifier(BitStream* bit_stream, Object* objects) {
         read_until(bit_stream, "\"", (char**) &(current_object.value));
     } else if (current_object.obj_type == NUMBER) {
         current_object.value = calloc(350, sizeof(char));
-        read_until(bit_stream, ",", (char**) &(current_object.value));
+        read_until(bit_stream, ", ", (char**) &(current_object.value));
     }
 
     append_obj(objects, current_object);
