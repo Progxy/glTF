@@ -19,7 +19,7 @@ typedef struct Object {
 
 #define STR_LEN(str, len) while ((str)[len] != '\0') { len++; }
 
-void append_obj(Object* parent_obj, Object obj) {
+static void append_obj(Object* parent_obj, Object obj) {
     parent_obj -> children = (Object*) realloc(parent_obj -> children, sizeof(Object) * (parent_obj -> children_count + 1));
     (parent_obj -> children)[parent_obj -> children_count] = obj;
     (parent_obj -> children)[parent_obj -> children_count].parent = parent_obj;
