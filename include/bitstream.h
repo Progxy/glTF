@@ -137,6 +137,23 @@ static bool is_contained(unsigned char val, unsigned char* container, unsigned i
     return FALSE;
 }
 
+bool contains(unsigned char* values, unsigned int values_len, unsigned char* container, unsigned int container_len) {
+    for (unsigned int i = 0; i < values_len; ++i) {
+        if (is_contained(values[i], container, container_len)) {
+            return TRUE;
+        }
+    }
+    return FALSE;
+}
+
+unsigned int get_symbol_pos(char* str, unsigned char symbol) {
+    unsigned int pos = 0;
+    while (str[pos] != symbol && pos < strlen(str)) {
+        pos++;
+    }
+    return pos;
+}
+
 char* get_str(BitStream* bit_stream, unsigned char* str_terminators, unsigned int terminators_num) {
     char* str = (char*) calloc(1, sizeof(char));
     unsigned int index = 0;
@@ -171,11 +188,7 @@ void read_until(BitStream* bit_stream, char* symbols, char** data) {
     unsigned int size = 0;
     get_next_byte(bit_stream); // Start the reading
     
-    while (!is_contained(bit_stream -> current_byte, (unsigned char*) symbols, strlen(symbols))) {
-        if (bit_stream -> error) {
-            return;
-        }
-
+    while (!is_contained(bit_stream -> current_byte, (unsigned char*) symbols, strlen(symbols)) && (bit_stream -> byte < bit_stream -> size)) {
         if (data != NULL) {
             (*data)[size] = bit_stream -> current_byte;
             size++;
@@ -189,7 +202,7 @@ void read_until(BitStream* bit_stream, char* symbols, char** data) {
         size++;
         (*data) = (char*) realloc(*data, size * sizeof(char));
     }
-    
+
     return;
 }
 

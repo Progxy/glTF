@@ -40,6 +40,11 @@ static void strip(char** str) {
     (*str)[len] = '\0';
 
     *str = (char*) realloc(*str, sizeof(char) * (len + 1));
+    
+    unsigned int ind = 0;
+    while ((*str)[ind] == ' ') {
+        (*str)++;
+    }
 
     return;
 }
@@ -159,12 +164,74 @@ static void read_identifier(BitStream* bit_stream, Object* objects) {
         read_until(bit_stream, "\"", (char**) &(current_object.value));
     } else if (current_object.obj_type == NUMBER) {
         current_object.value = calloc(350, sizeof(char));
-        read_until(bit_stream, ", ", (char**) &(current_object.value));
+        read_until(bit_stream, ",\n", (char**) &(current_object.value));
+        strip((char**) &(current_object.value));
     }
 
     append_obj(objects, current_object);
 
     return;
+}
+
+static Object* get_object_from_identifier(char* identifier, Object* object) {
+    Object* obj = object -> children;
+    debug_print(YELLOW, "children count: %u\n", object -> children_count);
+    unsigned int child_count = 0;
+
+    while (strcmp(obj -> identifier, identifier) && (child_count < object -> children_count)) {
+        obj++;
+        child_count++;
+    }
+
+    if (child_count == object -> children_count) {
+        return NULL;
+    }
+
+    debug_print(YELLOW, "child_count: %u out of %u\n", child_count, object -> children_count);
+
+    return obj;
+}
+
+static Object* get_object_by_id(char* id, Object* main_object) {
+    Object* object = main_object;
+    BitStream* bit_stream = allocate_bit_stream((unsigned char*) id, strlen(id) + 1);
+
+    while (bit_stream -> byte < bit_stream -> size - 1) {
+        int index = -1;
+        char* identifier = (char*) calloc(350, sizeof(char));
+        read_until(bit_stream, "/", &identifier);
+
+        if (contains((unsigned char*) identifier, strlen(identifier), (unsigned char*) "[", 1)) {
+            char* str_index = (char*) calloc(25, sizeof(char));
+            unsigned int ind = 0;
+            for (unsigned int i = get_symbol_pos(identifier, '[') + 1; (bit_stream -> stream)[i] != ']'; ++i, ++ind) {
+                str_index[ind] = (bit_stream -> stream)[i];
+            }
+            str_index[ind] = '\0';
+            str_index = (char*) realloc(str_index, sizeof(char) * (ind + 1));
+            index = atoi(str_index);
+            free(str_index);
+        }
+
+        unsigned int new_size = get_symbol_pos(identifier, '[') + 1;
+        identifier[new_size - 1] = '\0';
+        identifier = (char*) realloc(identifier, sizeof(char) * new_size);
+
+        debug_print(YELLOW, "identifier: '%s', finding: '%s'\n", object -> identifier, identifier);
+        
+        object = get_object_from_identifier(identifier, object);
+        if (index != -1) object = object -> children + index;
+        if (object == NULL) {
+            debug_print(CYAN, "object not found...\n");
+            free(identifier);
+            return NULL;
+        }
+
+        
+        free(identifier);
+    }
+
+    return object;
 }
 
 void decode_gltf(char* path) {
@@ -187,6 +254,12 @@ void decode_gltf(char* path) {
     read_dictionary(bit_stream, &default_object);
     deallocate_bit_stream(bit_stream);
     free(file_path);
+
+    Object* obj = get_object_by_id("accessors[0]/bufferView", &default_object);
+    if (obj == NULL) {
+        return;
+    }
+    debug_print(WHITE, "value: '%s', type: %s\n", (char*) obj -> value, objs_types[obj -> obj_type]);
 
     return;
 }
