@@ -146,9 +146,9 @@ bool contains(unsigned char* values, unsigned int values_len, unsigned char* con
     return FALSE;
 }
 
-unsigned int get_symbol_pos(char* str, unsigned char symbol) {
-    unsigned int pos = 0;
-    while (str[pos] != symbol && pos < strlen(str)) {
+unsigned int get_symbol_pos(char* str, unsigned char symbol, unsigned int pos) {
+    debug_print(YELLOW, "start: %u\n", pos);
+    while ((str[pos] != symbol) && (pos < strlen(str))) {
         pos++;
     }
     return pos;

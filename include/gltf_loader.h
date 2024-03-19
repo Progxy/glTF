@@ -33,18 +33,27 @@ static void strip(char** str) {
 
     len--; // skip the null terminator
 
-    while ((*str)[len] == ' ') { len--; }
+    while ((*str)[len] == ' ' || (*str)[len] == '\n' || (*str)[len] == '\r') { len--; }
     
     len++; // skip to the position of the last whitespace
 
     (*str)[len] = '\0';
 
+    len++;
+
     *str = (char*) realloc(*str, sizeof(char) * (len + 1));
     
     unsigned int ind = 0;
-    while ((*str)[ind] == ' ') {
-        (*str)++;
+    for (ind = 0; ind < len && ((*str)[ind] == ' ' || (*str)[ind] == '\n' || (*str)[len] == '\r'); ++ind) { }
+    
+    char* new_str = (char*) calloc(len - ind, sizeof(char));
+
+    for (unsigned int i = 0; ind < len; ++i, ++ind) {
+        new_str[i] = (*str)[ind];
     }
+
+    free(*str);
+    *str = new_str;
 
     return;
 }
@@ -162,10 +171,12 @@ static void read_identifier(BitStream* bit_stream, Object* objects) {
     } else if (current_object.obj_type == STRING) {
         current_object.value = calloc(350, sizeof(char));
         read_until(bit_stream, "\"", (char**) &(current_object.value));
+        skip_back(bit_stream, 1);
     } else if (current_object.obj_type == NUMBER) {
         current_object.value = calloc(350, sizeof(char));
         read_until(bit_stream, ",\n", (char**) &(current_object.value));
         strip((char**) &(current_object.value));
+        skip_back(bit_stream, 1);
     }
 
     append_obj(objects, current_object);
@@ -199,25 +210,16 @@ static Object* get_object_by_id(char* id, Object* main_object) {
     while (bit_stream -> byte < bit_stream -> size - 1) {
         int index = -1;
         char* identifier = (char*) calloc(350, sizeof(char));
-        read_until(bit_stream, "/", &identifier);
+        read_until(bit_stream, "/[", &identifier);
+        debug_print(YELLOW, "identifier: '%s', finding: '%s'\n", object -> identifier, identifier);
 
-        if (contains((unsigned char*) identifier, strlen(identifier), (unsigned char*) "[", 1)) {
+        if (bit_stream -> current_byte == '[') {
             char* str_index = (char*) calloc(25, sizeof(char));
-            unsigned int ind = 0;
-            for (unsigned int i = get_symbol_pos(identifier, '[') + 1; (bit_stream -> stream)[i] != ']'; ++i, ++ind) {
-                str_index[ind] = (bit_stream -> stream)[i];
-            }
-            str_index[ind] = '\0';
-            str_index = (char*) realloc(str_index, sizeof(char) * (ind + 1));
+            read_until(bit_stream, "]", &str_index);
+            get_next_byte(bit_stream); // Skip the '/' symbol
             index = atoi(str_index);
             free(str_index);
         }
-
-        unsigned int new_size = get_symbol_pos(identifier, '[') + 1;
-        identifier[new_size - 1] = '\0';
-        identifier = (char*) realloc(identifier, sizeof(char) * new_size);
-
-        debug_print(YELLOW, "identifier: '%s', finding: '%s'\n", object -> identifier, identifier);
         
         object = get_object_from_identifier(identifier, object);
         if (index != -1) object = object -> children + index;
@@ -229,6 +231,11 @@ static Object* get_object_by_id(char* id, Object* main_object) {
 
         
         free(identifier);
+    }
+
+    if (object -> value == NULL) {
+        debug_print(CYAN, "invalid index\n");
+        return NULL;
     }
 
     return object;
@@ -255,10 +262,12 @@ void decode_gltf(char* path) {
     deallocate_bit_stream(bit_stream);
     free(file_path);
 
-    Object* obj = get_object_by_id("accessors[0]/bufferView", &default_object);
+    Object* obj = get_object_by_id("accessors[0]/max[1]", &default_object);
+    
     if (obj == NULL) {
         return;
     }
+
     debug_print(WHITE, "value: '%s', type: %s\n", (char*) obj -> value, objs_types[obj -> obj_type]);
 
     return;
