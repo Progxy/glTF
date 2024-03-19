@@ -262,7 +262,7 @@ void decode_gltf(char* path) {
     deallocate_bit_stream(bit_stream);
     free(file_path);
 
-    Object* obj = get_object_by_id("accessors[0]/max[1]", &default_object);
+    Object* obj = get_object_by_id("accessors[0]/max[2]", &default_object);
     
     if (obj == NULL) {
         return;
