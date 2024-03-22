@@ -111,7 +111,6 @@ static void read_dictionary(BitStream* bit_stream, Object* objects);
 static void read_array(BitStream* bit_stream, Object* objects) {
     // We can find a collection of dictionary, numbers or strings
     ObjectType collection_type = get_obj_type(bit_stream);
-    debug_print(YELLOW, "found a collection of %s\n", objs_types[collection_type]);
 
     if (collection_type == NUMBER || collection_type == STRING) {
         while (bit_stream -> current_byte != ']') {
@@ -138,8 +137,6 @@ static void read_array(BitStream* bit_stream, Object* objects) {
         error_print("Invalid object type: %s.\n", objs_types[collection_type]);
     }
 
-    debug_print(YELLOW, "'%s' now contains %u elements\n", objects -> identifier, objects -> children_count);
-
     return;
 }
 
@@ -149,7 +146,6 @@ static void read_dictionary(BitStream* bit_stream, Object* objects) {
         read_identifier(bit_stream, objects);
         read_until(bit_stream, ",}", NULL);
     }
-    debug_print(YELLOW, "'%s' now contains %u elements\n", objects -> identifier, objects -> children_count);
     return;
 }
 
@@ -160,7 +156,6 @@ static void read_identifier(BitStream* bit_stream, Object* objects) {
     read_until(bit_stream, "\"", (char**) &(current_object.identifier));
 
     current_object.obj_type = get_obj_type(bit_stream);
-    debug_print(YELLOW, "found object: '%s', type: %s\n", current_object.identifier, objs_types[current_object.obj_type]);
 
     if (current_object.obj_type == ARRAY) {
         current_object.children = (Object*) calloc(1, sizeof(Object));
@@ -186,9 +181,8 @@ static void read_identifier(BitStream* bit_stream, Object* objects) {
 
 static Object* get_object_from_identifier(char* identifier, Object* object) {
     Object* obj = object -> children;
-    debug_print(YELLOW, "children count: %u\n", object -> children_count);
     unsigned int child_count = 0;
-
+    
     while (strcmp(obj -> identifier, identifier) && (child_count < object -> children_count)) {
         obj++;
         child_count++;
@@ -198,12 +192,10 @@ static Object* get_object_from_identifier(char* identifier, Object* object) {
         return NULL;
     }
 
-    debug_print(YELLOW, "child_count: %u out of %u\n", child_count, object -> children_count);
-
     return obj;
 }
 
-static Object* get_object_by_id(char* id, Object* main_object) {
+static Object* get_object_by_id(char* id, Object* main_object, bool print_warning) {
     Object* object = main_object;
     BitStream* bit_stream = allocate_bit_stream((unsigned char*) id, strlen(id) + 1);
 
@@ -211,7 +203,6 @@ static Object* get_object_by_id(char* id, Object* main_object) {
         int index = -1;
         char* identifier = (char*) calloc(350, sizeof(char));
         read_until(bit_stream, "/[", &identifier);
-        debug_print(YELLOW, "identifier: '%s', finding: '%s'\n", object -> identifier, identifier);
 
         if (bit_stream -> current_byte == '[') {
             char* str_index = (char*) calloc(25, sizeof(char));
@@ -224,7 +215,7 @@ static Object* get_object_by_id(char* id, Object* main_object) {
         object = get_object_from_identifier(identifier, object);
         if (index != -1) object = object -> children + index;
         if (object == NULL) {
-            debug_print(CYAN, "object not found...\n");
+            if (print_warning) debug_print(CYAN, "object not found...\n");
             free(identifier);
             return NULL;
         }
@@ -233,12 +224,122 @@ static Object* get_object_by_id(char* id, Object* main_object) {
         free(identifier);
     }
 
-    if (object -> value == NULL) {
+    if (object -> value == NULL && object -> children_count == 0) {
         debug_print(CYAN, "invalid index\n");
         return NULL;
     }
 
     return object;
+}
+
+typedef struct Array {
+    void** data;
+    unsigned int count;
+} Array;
+
+Array init_arr() {
+    Array arr = (Array) { .count = 0 };
+    arr.data = (void**) calloc(1, sizeof(void*));
+    return arr;
+}
+
+void append_element(Array* arr, void* element) {
+    arr -> data = (void**) realloc(arr -> data, sizeof(void*) * (arr -> count + 1));
+    (arr -> data)[arr -> count] = element;
+    (arr -> count)++;
+    return;
+}
+
+void deallocate_arr(Array arr) {
+    debug_print(YELLOW, "deallocating array...");
+    free(arr.data);
+    return;
+}
+
+typedef Array Vertices;
+typedef Array Normals;
+typedef Array TextureCoords;
+typedef Array Indices;
+
+typedef struct Face {
+    Indices indices;
+} Face;
+
+typedef struct Mesh {
+    Vertices vertices; // equivalent to the POSITION attribute of glTF meshes
+    Normals normals;
+    TextureCoords texture_coords;
+    Face* faces;
+    unsigned int material_index;
+} Mesh;
+
+typedef struct Node {
+    Array meshes_indices;
+    struct Node* childrens;
+    unsigned int children_count;
+} Node;
+
+typedef struct Material {
+    unsigned int type;
+    unsigned int texture_id;
+} Material;
+
+typedef struct Scene {
+    Node root_node;
+    Mesh* meshes;
+    unsigned int meshes_count;
+    Material* materials;
+    unsigned int materials_count;
+} Scene;
+
+Node create_node(Object* nodes_obj, unsigned int node_index) {
+    Node node = {0};
+    Object* node_obj = nodes_obj -> children + node_index;
+
+    // Decode other children
+    Object* node_children = get_object_by_id("children", node_obj, FALSE);
+    if (node_children != NULL) {
+        node.children_count = node_children -> children_count;
+        node.childrens = (Node*) calloc(node.children_count, sizeof(Node));
+        for (unsigned int i = 0; i < node.children_count; ++i) {
+            unsigned int child_index = atoi((char*) ((node_children -> children)[i].value));
+            (node.childrens)[i] = create_node(nodes_obj, child_index);
+        }
+    } else {
+        node.children_count = 0;
+        node.childrens = NULL;
+    }
+
+    // Decode mesh
+    Object* meshes = get_object_by_id("mesh", node_obj, FALSE);
+    if (meshes == NULL) {
+        node.meshes_indices = init_arr();
+        unsigned int meshes_count = meshes -> children_count;
+        for (unsigned int i = 0; i < meshes_count; ++i) {
+            unsigned int mesh_index = atoi((char*) ((meshes -> children)[i].value));
+            append_element(&(node.meshes_indices), &mesh_index);
+        }
+    } else {
+        node.meshes_indices = (Array) { .count = 0, .data = NULL };
+    }
+
+    return node;
+}
+
+Scene decode_scene(Object main_obj) {
+    Scene scene = {0};
+
+    // decode accessors
+
+    unsigned int root_node_index = atoi((char*) (get_object_by_id("scenes[0]/nodes[0]", &main_obj, TRUE) -> value));
+    debug_print(WHITE, "root node: %u\n", root_node_index);
+
+    Object* nodes_obj = get_object_by_id("nodes", &main_obj, TRUE);
+    Node root_node = create_node(nodes_obj, root_node_index);
+
+    debug_print(WHITE, "root node, children count: %u, meshes_count: %u\n", root_node.children_count, root_node.meshes_indices.count);
+
+    return scene;
 }
 
 void decode_gltf(char* path) {
@@ -262,13 +363,8 @@ void decode_gltf(char* path) {
     deallocate_bit_stream(bit_stream);
     free(file_path);
 
-    Object* obj = get_object_by_id("accessors[0]/max[2]", &default_object);
-    
-    if (obj == NULL) {
-        return;
-    }
-
-    debug_print(WHITE, "value: '%s', type: %s\n", (char*) obj -> value, objs_types[obj -> obj_type]);
+    Scene scene = decode_scene(default_object);
+    (void)scene;
 
     return;
 }
