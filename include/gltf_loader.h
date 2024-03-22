@@ -182,7 +182,7 @@ static void read_identifier(BitStream* bit_stream, Object* objects) {
 static Object* get_object_from_identifier(char* identifier, Object* object) {
     Object* obj = object -> children;
     unsigned int child_count = 0;
-    
+
     while (strcmp(obj -> identifier, identifier) && (child_count < object -> children_count)) {
         obj++;
         child_count++;
