@@ -523,6 +523,12 @@ Mesh* decode_mesh(Array accessors, Object main_obj, unsigned int* meshes_count) 
     return meshes;
 }
 
+Material* decode_materials(Object main_obj, unsigned int* materials_count) {
+    Material* materials = (Material*) calloc(1, sizeof(Material));
+
+    return materials;
+}
+
 Scene decode_scene(Object main_obj, char* path) {
     Scene scene = {0};
 
@@ -541,8 +547,15 @@ Scene decode_scene(Object main_obj, char* path) {
     scene.meshes = decode_mesh(accessors, main_obj, &scene.meshes_count);
 
     // deallocate accessors
+    for (unsigned int i = 0; i < accessors.count; ++i) {
+        free(GET_ELEMENT(Accessor*, accessors, i) -> data);
+        free(GET_ELEMENT(Accessor*, accessors, i));
+    }
+    deallocate_arr(accessors);
 
     // decode materials
+    scene.materials_count = 0;
+    scene.materials = decode_materials(main_obj, &scene.materials_count);
 
     return scene;
 }
