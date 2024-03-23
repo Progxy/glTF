@@ -181,18 +181,14 @@ static void read_identifier(BitStream* bit_stream, Object* objects) {
 
 static Object* get_object_from_identifier(char* identifier, Object* object) {
     Object* obj = object -> children;
-    unsigned int child_count = 0;
 
-    while (strcmp(obj -> identifier, identifier) && (child_count < object -> children_count)) {
-        obj++;
-        child_count++;
+    for (unsigned int child_count = 0; child_count < object -> children_count; ++obj, ++child_count) {
+        if (!strcmp(obj -> identifier, identifier)) {
+            return obj;
+        }
     }
 
-    if (child_count == object -> children_count) {
-        return NULL;
-    }
-
-    return obj;
+    return NULL;
 }
 
 static Object* get_object_by_id(char* id, Object* main_object, bool print_warning) {
@@ -213,13 +209,11 @@ static Object* get_object_by_id(char* id, Object* main_object, bool print_warnin
         }
         
         object = get_object_from_identifier(identifier, object);
-        if (index != -1) object = object -> children + index;
         if (object == NULL) {
             if (print_warning) debug_print(CYAN, "object not found...\n");
             free(identifier);
             return NULL;
-        }
-
+        } else if (index != -1) object = object -> children + index;
         
         free(identifier);
     }
@@ -312,7 +306,7 @@ Node create_node(Object* nodes_obj, unsigned int node_index) {
 
     // Decode mesh
     Object* meshes = get_object_by_id("mesh", node_obj, FALSE);
-    if (meshes == NULL) {
+    if (meshes != NULL) {
         node.meshes_indices = init_arr();
         unsigned int meshes_count = meshes -> children_count;
         for (unsigned int i = 0; i < meshes_count; ++i) {
@@ -326,10 +320,15 @@ Node create_node(Object* nodes_obj, unsigned int node_index) {
     return node;
 }
 
+Array decode_accessors(Object main_obj) {
+    Array accessors = init_arr();
+    return accessors;
+}
+
 Scene decode_scene(Object main_obj) {
     Scene scene = {0};
 
-    // decode accessors
+    Array accessors = decode_accessors(main_obj);
 
     unsigned int root_node_index = atoi((char*) (get_object_by_id("scenes[0]/nodes[0]", &main_obj, TRUE) -> value));
     debug_print(WHITE, "root node: %u\n", root_node_index);
@@ -337,7 +336,11 @@ Scene decode_scene(Object main_obj) {
     Object* nodes_obj = get_object_by_id("nodes", &main_obj, TRUE);
     Node root_node = create_node(nodes_obj, root_node_index);
 
-    debug_print(WHITE, "root node, children count: %u, meshes_count: %u\n", root_node.children_count, root_node.meshes_indices.count);
+    debug_print(WHITE, "root node: children count: %u, meshes_count: %u\n", root_node.children_count, root_node.meshes_indices.count);
+
+    // decode meshes
+
+    // decode materials
 
     return scene;
 }
