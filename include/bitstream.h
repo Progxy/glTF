@@ -7,10 +7,15 @@
 #include "./debug_print.h"
 #include "./types.h"
 
-BitStream* allocate_bit_stream(unsigned char* data_stream, unsigned int size) {
+BitStream* allocate_bit_stream(unsigned char* data_stream, unsigned int size, bool copy_flag) {
     BitStream* bit_stream = (BitStream*) calloc(1, sizeof(BitStream));
-
-    bit_stream -> stream = data_stream;
+    if (copy_flag) {
+        unsigned char* new_data_stream = (unsigned char*) calloc(size, sizeof(unsigned char));
+        for (unsigned int i = 0; i < size; ++i) {
+            new_data_stream[i] = data_stream[i];
+        }
+        bit_stream -> stream = new_data_stream;
+    } else bit_stream -> stream = data_stream;
     bit_stream -> bit = 0;
     bit_stream -> byte = 0;
     bit_stream -> size = size;

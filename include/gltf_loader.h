@@ -27,6 +27,11 @@ static void append_obj(Object* parent_obj, Object obj) {
     return;
 }
 
+static int s_atoi(char* value) {
+    if (value == NULL) return 0;
+    return atoi(value);
+}
+
 static void strip(char** str) {
     unsigned int len = 0;
     STR_LEN(*str, len);
@@ -193,7 +198,7 @@ static Object* get_object_from_identifier(char* identifier, Object* object) {
 
 static Object* get_object_by_id(char* id, Object* main_object, bool print_warning) {
     Object* object = main_object;
-    BitStream* bit_stream = allocate_bit_stream((unsigned char*) id, strlen(id) + 1);
+    BitStream* bit_stream = allocate_bit_stream((unsigned char*) id, strlen(id) + 1, FALSE);
 
     while (bit_stream -> byte < bit_stream -> size - 1) {
         int index = -1;
@@ -231,6 +236,8 @@ typedef struct Array {
     unsigned int count;
 } Array;
 
+#define GET_ELEMENT(type, arr, index) ((type) (((arr).data)[index]))
+
 Array init_arr() {
     Array arr = (Array) { .count = 0 };
     arr.data = (void**) calloc(1, sizeof(void*));
@@ -253,10 +260,12 @@ void deallocate_arr(Array arr) {
 typedef Array Vertices;
 typedef Array Normals;
 typedef Array TextureCoords;
-typedef Array Indices;
+
+typedef enum Topology { POINTS, LINES, LINE_LOOP, LINE_STRIP, TRIANGLES, TRIANGLE_STRIP, TRIANGLE_FAN } Topology;
 
 typedef struct Face {
-    Indices indices;
+    unsigned int* indices;
+    Topology topology;
 } Face;
 
 typedef struct Mesh {
@@ -264,6 +273,7 @@ typedef struct Mesh {
     Normals normals;
     TextureCoords texture_coords;
     Face* faces;
+    unsigned int faces_count;
     unsigned int material_index;
 } Mesh;
 
@@ -320,25 +330,217 @@ Node create_node(Object* nodes_obj, unsigned int node_index) {
     return node;
 }
 
-Array decode_accessors(Object main_obj) {
+typedef enum BufferTarget {ARRAY_BUFFER, ELEMENT_ARRAY_BUFFER} BufferTarget;
+
+Array decode_buffer_views(Object main_obj, char* path) {
+    Array buffer_views = init_arr();
+    Array buffers = init_arr();
+
+    // Store buffers
+    Object* buffers_obj = get_object_by_id("buffers", &main_obj, TRUE);
+    for (unsigned int i = 0; i < buffers_obj -> children_count; ++i) {
+        char* uri = (char*) (get_object_by_id("uri", buffers_obj -> children + i, TRUE) -> value);
+        unsigned int byte_length = atoi((char*) (get_object_by_id("byteLength", buffers_obj -> children + i, TRUE) -> value));
+        
+        File buffer_data = {0};
+        buffer_data.file_path = (char*) calloc(350, sizeof(char));
+        int len = snprintf(buffer_data.file_path, 350, "%s%s", path, uri);
+        buffer_data.file_path = (char*) realloc(buffer_data.file_path, sizeof(char) * len);
+        read_file(&buffer_data);
+        
+        BitStream* bit_stream = allocate_bit_stream(buffer_data.data, byte_length, TRUE);
+        append_element(&buffers, (void*) bit_stream);
+        deallocate_file(&buffer_data, TRUE);
+    }
+
+    // Store buffer views
+    Object* buffer_views_obj = get_object_by_id("bufferViews", &main_obj, TRUE);
+    for (unsigned int i = 0; i < buffer_views_obj -> children_count; ++i) {
+        unsigned int buffer_index = atoi((char*)(get_object_by_id("buffer", buffer_views_obj -> children + i, TRUE) -> value));
+        unsigned int byte_length = atoi((char*)(get_object_by_id("byteLength", buffer_views_obj -> children + i, TRUE) -> value));
+        unsigned int byte_offset = s_atoi((char*)(get_object_by_id("byteOffset", buffer_views_obj -> children + i, TRUE) -> value));
+
+        unsigned char* bit_stream_data = GET_ELEMENT(BitStream*, buffers, buffer_index) -> stream + byte_offset;
+        BitStream* buffer_view_stream = allocate_bit_stream(bit_stream_data, byte_length, TRUE);
+        append_element(&buffer_views, buffer_view_stream);
+    }
+
+    // Deallocate buffers
+    for (unsigned int i = 0; i < buffers.count; ++i) {
+        deallocate_bit_stream(GET_ELEMENT(BitStream*, buffers, i));
+    }
+    deallocate_arr(buffers);
+
+    return buffer_views;
+}
+
+typedef enum DataType { SCALAR, VEC_2, VEC_3, VEC_4, MAT_2, MAT_3, MAT_4 } DataType;
+unsigned char elements_count[] = { 1, 2, 3, 4, 4, 9, 16 };
+typedef enum ComponentType { BYTE, UNSIGNED_BYTE, SHORT, UNSIGNED_SHORT, UNSIGNED_INT, FLOAT } ComponentType;
+unsigned char byte_lengths[] = { sizeof(char), sizeof(unsigned char), sizeof(short int), sizeof(unsigned short int), sizeof(unsigned int), sizeof(float) };
+
+typedef struct Accessor {
+    void* data;
+    ComponentType component_type;
+    unsigned int elements_count;
+    DataType data_type;
+} Accessor;
+
+DataType get_data_type(char* data_type_str) {
+    if (!strcmp("SCALAR", data_type_str)) return SCALAR;
+    else if (!strcmp("VEC_2", data_type_str)) return VEC_2;
+    else if (!strcmp("VEC_3", data_type_str)) return VEC_3;
+    else if (!strcmp("VEC_4", data_type_str)) return VEC_4;
+    else if (!strcmp("MAT_2", data_type_str)) return MAT_2;
+    else if (!strcmp("MAT_3", data_type_str)) return MAT_3;
+    else if (!strcmp("MAT_4", data_type_str)) return MAT_4;
+    else return SCALAR;
+}
+
+Array decode_accessors(Object main_obj, char* path) {
     Array accessors = init_arr();
+    Array buffer_views = decode_buffer_views(main_obj, path);
+
+    Object* accessors_obj = get_object_by_id("accessors", &main_obj, TRUE);
+    for (unsigned int i = 0; i < accessors_obj -> children_count; ++i) {
+        unsigned int buffer_view_index = atoi((char*) (get_object_by_id("bufferView", accessors_obj -> children + i, TRUE) -> value));
+        unsigned int component_type = atoi((char*) (get_object_by_id("componentType", accessors_obj -> children + i, TRUE) -> value)) % 5120;
+        unsigned int elements_count = atoi((char*) (get_object_by_id("count", accessors_obj -> children + i, TRUE) -> value));
+        unsigned int byte_offset = s_atoi((char*)(get_object_by_id("byteOffset", accessors_obj -> children + i, TRUE) -> value));
+        DataType data_type = get_data_type((char*) (get_object_by_id("type", accessors_obj -> children + i, TRUE) -> value));
+        BitStream* buffer_view_stream = GET_ELEMENT(BitStream*, buffer_views, buffer_view_index);
+        buffer_view_stream -> byte = byte_offset;
+
+        Accessor* accessor = (Accessor*) calloc(1, sizeof(Accessor));
+        *accessor = (Accessor) { .component_type = component_type, .elements_count = elements_count, .data_type = data_type };
+        accessor -> data = get_next_n_byte(buffer_view_stream, elements_count, byte_lengths[component_type]);
+        append_element(&accessors, (void*) accessor);
+    }
+
+    // Deallocate buffers
+    for (unsigned int i = 0; i < buffer_views.count; ++i) {
+        deallocate_bit_stream(GET_ELEMENT(BitStream*, buffer_views, i));
+    }
+    deallocate_arr(buffer_views);
+    
     return accessors;
 }
 
-Scene decode_scene(Object main_obj) {
+Array extract_elements(Accessor obj_accessor) {
+    Array arr = init_arr();
+    for (unsigned int s = 0; s < obj_accessor.elements_count; ++s) {
+        unsigned char element_size = elements_count[obj_accessor.data_type];
+        unsigned char byte_size = byte_lengths[obj_accessor.component_type];
+        void* element = calloc(element_size, byte_size);
+        unsigned char* data = ((unsigned char*) obj_accessor.data) + (s * element_size * byte_size);
+
+        for (unsigned int t = 0; t < element_size; ++t) {
+            if (byte_size == BYTE) ((char*) element)[t] = data[t * element_size * byte_size];
+            else if (byte_size == UNSIGNED_BYTE) ((unsigned char*) element)[t] = data[t * element_size * byte_size];
+            else if (byte_size == SHORT) ((short int*) element)[t] = (data[t * element_size * byte_size] << 8) + data[t * element_size * byte_size + 1];
+            else if (byte_size == UNSIGNED_SHORT) ((unsigned short int*) element)[t] = (data[t * element_size * byte_size] << 8) + data[t * element_size * byte_size + 1];
+            else if (byte_size == UNSIGNED_INT) ((unsigned int*) element)[t] = (data[t * element_size * byte_size] << 24) + (data[t * element_size * byte_size + 1] << 16) + (data[t * element_size * byte_size + 2] << 8) + data[t * element_size * byte_size + 3];
+            else if (byte_size == FLOAT) {
+                unsigned int value = (data[t * element_size * byte_size] << 24) + (data[t * element_size * byte_size + 1] << 16) + (data[t * element_size * byte_size + 2] << 8) + data[t * element_size * byte_size + 3];
+                ((float*) element)[t] = *((float*) &value);
+            }
+        }
+        
+        append_element(&arr, element);
+    }
+    return arr;
+}
+
+unsigned char topology_size[] = { 1, 2, 2, 2, 3, 3, 3 };
+
+Face* create_faces(Array indices_arr, Topology topology, unsigned int* faces_count) {
+    Face* faces = (Face*) calloc(1, sizeof(Face)); 
+    unsigned int total_faces = indices_arr.count;
+    if (topology == TRIANGLE_STRIP || topology == TRIANGLE_FAN) total_faces -= 2;
+    else if (topology == LINE_STRIP) total_faces -= 1;
+    else if (topology == LINES) total_faces /= 2;
+    else if (topology == TRIANGLES) total_faces /= 3;
+
+    for (unsigned int i = 0; i < total_faces; ++i, ++(*faces_count)) {
+        faces = (Face*) realloc(faces, sizeof(Face) * (*faces_count + 1));
+        faces[i].topology = topology;
+        faces[i].indices = (unsigned int*) calloc(topology_size[topology], sizeof(unsigned int));
+        if (topology == LINE_STRIP) {
+            faces[i].indices[0] = *GET_ELEMENT(unsigned int*, indices_arr, i);
+            faces[i].indices[1] = *GET_ELEMENT(unsigned int*, indices_arr, i + 1);
+        } else if (topology == LINE_LOOP) {
+            faces[i].indices[0] = *GET_ELEMENT(unsigned int*, indices_arr, i);
+            faces[i].indices[1] = *GET_ELEMENT(unsigned int*, indices_arr, (i + 1) % indices_arr.count);
+        } else if (topology == LINES) {
+            faces[i].indices[0] = *GET_ELEMENT(unsigned int*, indices_arr, 2 * i);
+            faces[i].indices[1] = *GET_ELEMENT(unsigned int*, indices_arr, (2 * i) + 1);
+        } else if (topology == TRIANGLES) {
+            faces[i].indices[0] = *GET_ELEMENT(unsigned int*, indices_arr, 3 * i);
+            faces[i].indices[1] = *GET_ELEMENT(unsigned int*, indices_arr, (3 * i) + 1);
+            faces[i].indices[2] = *GET_ELEMENT(unsigned int*, indices_arr, (3 * i) + 2);
+        } else if (topology == TRIANGLE_STRIP) {
+            faces[i].indices[0] = *GET_ELEMENT(unsigned int*, indices_arr, i);
+            faces[i].indices[1] = *GET_ELEMENT(unsigned int*, indices_arr, i + (1 + i % 2));
+            faces[i].indices[2] = *GET_ELEMENT(unsigned int*, indices_arr, i + (2 - i % 2));
+        } else if (topology == TRIANGLE_FAN) {
+            faces[i].indices[0] = *GET_ELEMENT(unsigned int*, indices_arr, i + 1);
+            faces[i].indices[1] = *GET_ELEMENT(unsigned int*, indices_arr, i + 2);
+            faces[i].indices[2] = *GET_ELEMENT(unsigned int*, indices_arr, 0);
+        } else if (topology == POINTS) faces[i].indices[0] = *GET_ELEMENT(unsigned int*, indices_arr, i);
+    }
+
+    return faces;
+}
+
+Mesh* decode_mesh(Array accessors, Object main_obj, unsigned int* meshes_count) {
+    Mesh* meshes = (Mesh*) calloc(1, sizeof(Mesh));
+    Object* meshes_obj = get_object_by_id("meshes", &main_obj, TRUE);
+    for (unsigned int i = 0; i < meshes_obj -> children_count; ++i, ++(*meshes_count)) {
+        meshes = (Mesh*) realloc(meshes, sizeof(Mesh) * (*meshes_count + 1));
+        Object* primitives = get_object_by_id("primitives", meshes_obj -> children + i, TRUE);
+        for (unsigned int j = 0; j < primitives -> children_count; ++j) {
+            unsigned int material_index = atoi((char*) (get_object_by_id("material", primitives -> children + j, TRUE) -> value));
+            Topology topology = atoi((char*) (get_object_by_id("mode", primitives -> children + j, TRUE) -> value));
+            unsigned int indices_index = atoi((char*) (get_object_by_id("indices", primitives -> children + j, TRUE) -> value));
+            unsigned int vertices_index = atoi((char*) (get_object_by_id("attributes/POSITION", primitives -> children + j, TRUE) -> value));
+            unsigned int normal_index = atoi((char*) (get_object_by_id("attributes/NORMAL", primitives -> children + j, TRUE) -> value));
+            unsigned int tex_coords_index = atoi((char*) (get_object_by_id("attributes/TEXCOORD_0", primitives -> children + j, TRUE) -> value));
+
+            Accessor* vertex_accessor = GET_ELEMENT(Accessor*, accessors, vertices_index);
+            meshes[i].vertices = extract_elements(*vertex_accessor);            
+            Accessor* normal_accessor = GET_ELEMENT(Accessor*, accessors, normal_index);
+            meshes[i].normals = extract_elements(*normal_accessor);            
+            Accessor* tex_coords_accessor = GET_ELEMENT(Accessor*, accessors, tex_coords_index);
+            meshes[i].texture_coords = extract_elements(*tex_coords_accessor);
+            Accessor* indices_accessor = GET_ELEMENT(Accessor*, accessors, indices_index);
+            Array indices_arr = extract_elements(*indices_accessor);
+            meshes[i].faces_count = 0;
+            meshes[i].faces = create_faces(indices_arr, topology, &(meshes[i].faces_count));
+            meshes[i].material_index = material_index;
+        }
+    }
+
+    return meshes;
+}
+
+Scene decode_scene(Object main_obj, char* path) {
     Scene scene = {0};
 
-    Array accessors = decode_accessors(main_obj);
+    Array accessors = decode_accessors(main_obj, path);
 
     unsigned int root_node_index = atoi((char*) (get_object_by_id("scenes[0]/nodes[0]", &main_obj, TRUE) -> value));
     debug_print(WHITE, "root node: %u\n", root_node_index);
 
     Object* nodes_obj = get_object_by_id("nodes", &main_obj, TRUE);
-    Node root_node = create_node(nodes_obj, root_node_index);
+    scene.root_node = create_node(nodes_obj, root_node_index);
 
-    debug_print(WHITE, "root node: children count: %u, meshes_count: %u\n", root_node.children_count, root_node.meshes_indices.count);
+    debug_print(WHITE, "root node: children count: %u, meshes_count: %u\n", scene.root_node.children_count, scene.root_node.meshes_indices.count);
 
     // decode meshes
+    scene.meshes_count = 0;
+    scene.meshes = decode_mesh(accessors, main_obj, &scene.meshes_count);
+
+    // deallocate accessors
 
     // decode materials
 
@@ -353,20 +555,19 @@ void decode_gltf(char* path) {
     File file_data = (File) {.file_path = file_path};
     read_file(&file_data);
 
-    BitStream* bit_stream = allocate_bit_stream(file_data.data, file_data.size);
+    BitStream* bit_stream = allocate_bit_stream(file_data.data, file_data.size, FALSE);
+    deallocate_file(&file_data, FALSE);
 
     if (get_next_bytes_us(bit_stream) != (unsigned short int)(('{' << 8) | '\n')) {
         deallocate_bit_stream(bit_stream);
-        free(file_path);
         return; 
     }
 
     Object default_object = (Object) { .children = calloc(1, sizeof(Object)), .children_count = 0, .parent = NULL, .value = NULL, .identifier = "main", .obj_type = DICTIONARY };
     read_dictionary(bit_stream, &default_object);
     deallocate_bit_stream(bit_stream);
-    free(file_path);
 
-    Scene scene = decode_scene(default_object);
+    Scene scene = decode_scene(default_object, path);
     (void)scene;
 
     return;

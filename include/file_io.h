@@ -39,4 +39,11 @@ bool read_file(File* file_data) {
     return FALSE;
 }
 
+void deallocate_file(File* file_data, bool dealloc_data) {
+    debug_print(BLUE, "deallocating file...\n");
+    if (dealloc_data) free(file_data -> data);
+    free(file_data -> file_path);
+    return;
+}
+
 #endif //_FILE_IO_H_
