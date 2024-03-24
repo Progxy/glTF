@@ -300,6 +300,7 @@ typedef struct Texture {
     Wrap wrap_t;
 } Texture;
 
+// TODO: revisit the Material struct based on the Assimp one: https://codebrowser.dev/qt6/qt3d/src/3rdparty/assimp/src/code/AssetLib/glTF2/glTF2Asset.h.html#glTF2::Material
 typedef struct Material {
     RGB ambientColor;
     RGB diffuseColor;
@@ -571,7 +572,7 @@ Material* decode_materials(Object main_obj, unsigned int* materials_count, char*
 
     unsigned int texture_count = 0;
     Texture* textures = collect_textures(main_obj, &texture_count, path);
-    
+
 
     return materials;
 }
