@@ -283,9 +283,31 @@ typedef struct Node {
     unsigned int children_count;
 } Node;
 
+typedef struct RGB {
+    unsigned char R;
+    unsigned char G;
+    unsigned char B;
+} RGB;
+
+typedef enum Filter { NEAREST = 9728, LINEAR, NEAREST_MIPMAP_NEAREST = 9984, LINEAR_MIPMAP_NEAREST, NEAREST_MIPMAP_LINEAR, LINEAR_MIPMAP_LINEAR } Filter;
+typedef enum Wrap { CLAMP_TO_EDGE = 33071, MIRRORED_REPEAT = 33648, REPEAT = 10497 } Wrap;
+
+typedef struct Texture {
+    char* texture_path;
+    Filter mag_filter;
+    Filter min_filter;
+    Wrap wrap_s;
+    Wrap wrap_t;
+} Texture;
+
 typedef struct Material {
-    unsigned int type;
-    unsigned int texture_id;
+    RGB ambientColor;
+    RGB diffuseColor;
+    RGB specularColor;
+    RGB emissiveColor;
+    Texture texture;
+    float shininess;
+    float opacity;
 } Material;
 
 typedef struct Scene {
@@ -523,8 +545,33 @@ Mesh* decode_mesh(Array accessors, Object main_obj, unsigned int* meshes_count) 
     return meshes;
 }
 
-Material* decode_materials(Object main_obj, unsigned int* materials_count) {
+Texture* collect_textures(Object main_obj, unsigned int* texture_count, char* path) {
+    Texture* textures = (Texture*) calloc(1, sizeof(Texture));
+    Object* textures_obj = get_object_by_id("textures", &main_obj, TRUE);
+    Object* sampler_obj = get_object_by_id("samplers", &main_obj, TRUE);
+    Object* images_obj = get_object_by_id("images", &main_obj, TRUE);
+    
+    for (unsigned int i = 0; i < textures_obj ->children_count; ++i, ++(*texture_count)) {
+        unsigned int sampler_id = atoi((char*) (get_object_by_id("sampler", textures_obj -> children + i, TRUE) -> value));
+        unsigned int source_id = atoi((char*) (get_object_by_id("source", textures_obj -> children + i, TRUE) -> value));
+        textures[i].mag_filter = atoi((char*) (get_object_by_id("magFilter", sampler_obj -> children + sampler_id, TRUE) -> value));
+        textures[i].min_filter = atoi((char*) (get_object_by_id("minFilter", sampler_obj -> children + sampler_id, TRUE) -> value));
+        textures[i].wrap_s = atoi((char*) (get_object_by_id("wrapS", sampler_obj -> children + sampler_id, TRUE) -> value));
+        textures[i].wrap_t = atoi((char*) (get_object_by_id("wrapT", sampler_obj -> children + sampler_id, TRUE) -> value));
+        textures[i].texture_path = (char*) calloc(350, sizeof(char));
+        int path_len = snprintf(textures[i].texture_path, 350, "%s%s", path, (char*) (get_object_by_id("uri", images_obj -> children + source_id, TRUE) -> value));
+        textures[i].texture_path = (char*) realloc(textures[i].texture_path, sizeof(char) * path_len);
+    }
+    
+    return textures;
+}
+
+Material* decode_materials(Object main_obj, unsigned int* materials_count, char* path) {
     Material* materials = (Material*) calloc(1, sizeof(Material));
+
+    unsigned int texture_count = 0;
+    Texture* textures = collect_textures(main_obj, &texture_count, path);
+    
 
     return materials;
 }
@@ -555,8 +602,8 @@ Scene decode_scene(Object main_obj, char* path) {
 
     // decode materials
     scene.materials_count = 0;
-    scene.materials = decode_materials(main_obj, &scene.materials_count);
-
+    scene.materials = decode_materials(main_obj, &scene.materials_count, path);
+    
     return scene;
 }
 
