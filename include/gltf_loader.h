@@ -32,6 +32,11 @@ static int s_atoi(char* value) {
     return atoi(value);
 }
 
+static bool str_to_bool(char* str, char* true_str) {
+    if (!strcmp(str, true_str)) return TRUE;
+    return FALSE;
+}
+
 static void strip(char** str) {
     unsigned int len = 0;
     STR_LEN(*str, len);
@@ -231,6 +236,25 @@ static Object* get_object_by_id(char* id, Object* main_object, bool print_warnin
     return object;
 }
 
+void* get_array(Object* arr_obj, bool use_float) {
+    if (arr_obj == NULL) {
+        return NULL;
+    }
+
+    void* arr = calloc(arr_obj -> children_count, sizeof(unsigned int));
+    for (unsigned int i = 0; i < arr_obj -> children_count; ++i) {
+        if (use_float) ((float*) arr)[i] = (float) atof((char*) ((arr_obj -> children)[i].value));
+        else ((unsigned int*) arr)[i] = atoi((char*) ((arr_obj -> children)[i].value));
+    }
+    
+    return arr;
+}
+
+static void* get_value(Object* obj) {
+    if (obj == NULL) return NULL;
+    return obj -> value;
+}
+
 typedef struct Array {
     void** data;
     unsigned int count;
@@ -252,7 +276,7 @@ void append_element(Array* arr, void* element) {
 }
 
 void deallocate_arr(Array arr) {
-    debug_print(YELLOW, "deallocating array...");
+    debug_print(YELLOW, "deallocating array...\n");
     free(arr.data);
     return;
 }
@@ -298,17 +322,36 @@ typedef struct Texture {
     Filter min_filter;
     Wrap wrap_s;
     Wrap wrap_t;
+    unsigned int tex_coord;
 } Texture;
 
-// TODO: revisit the Material struct based on the Assimp one: https://codebrowser.dev/qt6/qt3d/src/3rdparty/assimp/src/code/AssetLib/glTF2/glTF2Asset.h.html#glTF2::Material
-typedef struct Material {
-    RGB ambientColor;
-    RGB diffuseColor;
-    RGB specularColor;
-    RGB emissiveColor;
+typedef struct PbrMetallicRoughness {
+    float* base_color_factor;
+    Texture base_color_texture;
+    Texture metallic_roughness_texture;
+    float metallic_factor;
+    float roughness_factor;
+} PbrMetallicRoughness;
+
+typedef struct NormalTextureInfo { 
     Texture texture;
-    float shininess;
-    float opacity;
+    unsigned int scale;
+} NormalTextureInfo;
+
+typedef struct OcclusionTextureInfo { 
+    Texture texture;
+    unsigned int strength;
+} OcclusionTextureInfo;
+
+typedef struct Material {
+    PbrMetallicRoughness pbr_metallic_roughness;
+    NormalTextureInfo normal_texture;
+    OcclusionTextureInfo occlusion_texture;
+    Texture emissive_texture;
+    float* emissive_factor;
+    char* alpha_mode;
+    float alpha_cutoff;
+    bool double_sided;
 } Material;
 
 typedef struct Scene {
@@ -381,7 +424,7 @@ Array decode_buffer_views(Object main_obj, char* path) {
     for (unsigned int i = 0; i < buffer_views_obj -> children_count; ++i) {
         unsigned int buffer_index = atoi((char*)(get_object_by_id("buffer", buffer_views_obj -> children + i, TRUE) -> value));
         unsigned int byte_length = atoi((char*)(get_object_by_id("byteLength", buffer_views_obj -> children + i, TRUE) -> value));
-        unsigned int byte_offset = s_atoi((char*)(get_object_by_id("byteOffset", buffer_views_obj -> children + i, TRUE) -> value));
+        unsigned int byte_offset = s_atoi((char*)(get_value(get_object_by_id("byteOffset", buffer_views_obj -> children + i, TRUE))));
 
         unsigned char* bit_stream_data = GET_ELEMENT(BitStream*, buffers, buffer_index) -> stream + byte_offset;
         BitStream* buffer_view_stream = allocate_bit_stream(bit_stream_data, byte_length, TRUE);
@@ -429,7 +472,7 @@ Array decode_accessors(Object main_obj, char* path) {
         unsigned int buffer_view_index = atoi((char*) (get_object_by_id("bufferView", accessors_obj -> children + i, TRUE) -> value));
         unsigned int component_type = atoi((char*) (get_object_by_id("componentType", accessors_obj -> children + i, TRUE) -> value)) % 5120;
         unsigned int elements_count = atoi((char*) (get_object_by_id("count", accessors_obj -> children + i, TRUE) -> value));
-        unsigned int byte_offset = s_atoi((char*)(get_object_by_id("byteOffset", accessors_obj -> children + i, TRUE) -> value));
+        unsigned int byte_offset = s_atoi((char*)(get_value(get_object_by_id("byteOffset", accessors_obj -> children + i, TRUE))));
         DataType data_type = get_data_type((char*) (get_object_by_id("type", accessors_obj -> children + i, TRUE) -> value));
         BitStream* buffer_view_stream = GET_ELEMENT(BitStream*, buffer_views, buffer_view_index);
         buffer_view_stream -> byte = byte_offset;
@@ -551,8 +594,9 @@ Texture* collect_textures(Object main_obj, unsigned int* texture_count, char* pa
     Object* textures_obj = get_object_by_id("textures", &main_obj, TRUE);
     Object* sampler_obj = get_object_by_id("samplers", &main_obj, TRUE);
     Object* images_obj = get_object_by_id("images", &main_obj, TRUE);
-    
+
     for (unsigned int i = 0; i < textures_obj ->children_count; ++i, ++(*texture_count)) {
+        textures = (Texture*) realloc(textures, sizeof(Texture) * (*texture_count + 1));
         unsigned int sampler_id = atoi((char*) (get_object_by_id("sampler", textures_obj -> children + i, TRUE) -> value));
         unsigned int source_id = atoi((char*) (get_object_by_id("source", textures_obj -> children + i, TRUE) -> value));
         textures[i].mag_filter = atoi((char*) (get_object_by_id("magFilter", sampler_obj -> children + sampler_id, TRUE) -> value));
@@ -562,6 +606,7 @@ Texture* collect_textures(Object main_obj, unsigned int* texture_count, char* pa
         textures[i].texture_path = (char*) calloc(350, sizeof(char));
         int path_len = snprintf(textures[i].texture_path, 350, "%s%s", path, (char*) (get_object_by_id("uri", images_obj -> children + source_id, TRUE) -> value));
         textures[i].texture_path = (char*) realloc(textures[i].texture_path, sizeof(char) * path_len);
+        textures[i].tex_coord = -1;
     }
     
     return textures;
@@ -573,6 +618,58 @@ Material* decode_materials(Object main_obj, unsigned int* materials_count, char*
     unsigned int texture_count = 0;
     Texture* textures = collect_textures(main_obj, &texture_count, path);
 
+    Object* materials_obj = get_object_by_id("materials", &main_obj, TRUE);
+    for (unsigned int i = 0; i < materials_obj -> children_count; ++i, ++(*materials_count)) {
+        materials = (Material*) realloc(materials, sizeof(Material) * (*materials_count + 1));
+
+        Object* pbr_metallic_roughness_obj = get_object_by_id("pbrMetallicRoughness", materials_obj -> children + i, FALSE);
+        if (pbr_metallic_roughness_obj != NULL) {
+            unsigned int base_color_texture_index = atoi((char*) (get_object_by_id("baseColorTexture/index", pbr_metallic_roughness_obj, TRUE) -> value));
+            materials[i].pbr_metallic_roughness.base_color_texture = textures[base_color_texture_index];
+
+            materials[i].pbr_metallic_roughness.base_color_factor = (float*) get_array(get_object_by_id("baseColorFactor", pbr_metallic_roughness_obj, FALSE), TRUE);
+            materials[i].pbr_metallic_roughness.base_color_texture.tex_coord = s_atoi((char*) get_value(get_object_by_id("baseColorTexture/texCoord", pbr_metallic_roughness_obj, FALSE))); 
+            materials[i].pbr_metallic_roughness.metallic_factor = s_atoi((char*) get_value(get_object_by_id("metallicFactor", pbr_metallic_roughness_obj, FALSE))); 
+            materials[i].pbr_metallic_roughness.roughness_factor = s_atoi((char*) get_value(get_object_by_id("roughnessFactor", pbr_metallic_roughness_obj, FALSE))); 
+            materials[i].pbr_metallic_roughness.roughness_factor = s_atoi((char*) get_value(get_object_by_id("roughnessFactor", pbr_metallic_roughness_obj, FALSE))); 
+
+            Object* metallic_roughness_texture_index_obj = get_object_by_id("metallicRoughnessTexture/index", pbr_metallic_roughness_obj, FALSE);
+            if (metallic_roughness_texture_index_obj != NULL) {
+                materials[i].pbr_metallic_roughness.metallic_roughness_texture = textures[atoi((char*) (metallic_roughness_texture_index_obj -> value))];
+                materials[i].pbr_metallic_roughness.metallic_roughness_texture.tex_coord = s_atoi((char*) get_value(get_object_by_id("metallicRoughnessTexture/texCoord", pbr_metallic_roughness_obj, FALSE))); 
+            } 
+        }  
+
+        Object* normal_texture_index_obj = get_object_by_id("normalTexture/index", materials_obj -> children + i, FALSE);
+        if (normal_texture_index_obj != NULL) {
+            materials[i].normal_texture.texture = textures[atoi((char*) (normal_texture_index_obj -> value))];
+            materials[i].normal_texture.texture.tex_coord = s_atoi((char*) get_value(get_object_by_id("normalTexture/texCoord", materials_obj -> children + i, FALSE))); 
+            materials[i].normal_texture.scale = s_atoi((char*) get_value(get_object_by_id("normalTexture/scale", materials_obj -> children + i, FALSE))); 
+        }       
+        
+        Object* occlusion_texture_index_obj = get_object_by_id("occlusionTexture/index", materials_obj -> children + i, FALSE);
+        if (occlusion_texture_index_obj != NULL) {
+            materials[i].occlusion_texture.texture = textures[atoi((char*) (occlusion_texture_index_obj -> value))];
+            materials[i].occlusion_texture.texture.tex_coord = s_atoi((char*) get_value(get_object_by_id("occlusionTexture/texCoord", materials_obj -> children + i, FALSE))); 
+            materials[i].occlusion_texture.strength = s_atoi((char*) get_value(get_object_by_id("occlusionTexture/strength", materials_obj -> children + i, FALSE))); 
+        }       
+
+        Object* emissive_texture_index_obj = get_object_by_id("emissiveTexture/index", materials_obj -> children + i, FALSE);
+        if (emissive_texture_index_obj != NULL) {
+            materials[i].emissive_texture = textures[atoi((char*) (emissive_texture_index_obj -> value))];
+            materials[i].emissive_texture.tex_coord = s_atoi((char*) get_value(get_object_by_id("emissiveTexture/texCoord", materials_obj -> children + i, FALSE))); 
+        }       
+
+        materials[i].emissive_factor = (float*) get_array(get_object_by_id("emissiveFactor", pbr_metallic_roughness_obj, FALSE), TRUE);
+        Object* alpha_mode_obj = get_object_by_id("alphaMode", materials_obj -> children + i, FALSE);
+        materials[i].alpha_mode = (alpha_mode_obj != NULL) ? (char*) (alpha_mode_obj -> value) : NULL;
+        materials[i].alpha_cutoff = s_atoi((char*) get_value(get_object_by_id("alphaCutoff", materials_obj -> children + i, FALSE))); 
+        Object* double_sided_obj = get_object_by_id("doubleSided", materials_obj -> children + i, FALSE);
+        materials[i].double_sided = (double_sided_obj != NULL) ? str_to_bool((char*) (double_sided_obj ->  value), "true") : FALSE;
+    }
+
+    // Deallocate textures
+    free(textures);
 
     return materials;
 }
