@@ -3,68 +3,37 @@
 
 #include "./debug_print.h"
 #include "./bitstream.h"
+#include "./utils.h"
 #include "./file_io.h"
 
-typedef enum ObjectType { ARRAY, STRING, NUMBER, DICTIONARY, INVALID_OBJECT } ObjectType;
-const char* objs_types[] = {"ARRAY", "STRING", "NUMBER", "DICTIONARY", "INVALID_OBJECT"};
+static void append_obj(Object* parent_obj, Object obj);
+static ObjectType get_obj_type(BitStream* bit_stream);
+static void read_array(BitStream* bit_stream, Object* objects);
+static void read_dictionary(BitStream* bit_stream, Object* objects);
+static void read_identifier(BitStream* bit_stream, Object* objects);
+static Object* get_object_from_identifier(char* identifier, Object* object);
+static Object* get_object_by_id(char* id, Object* main_object, bool print_warning);
+static void* get_array(Object* arr_obj, bool use_float);
+static void* get_value(Object* obj);
+static Node create_node(Object* nodes_obj, unsigned int node_index);
+static Array decode_buffer_views(Object main_obj, char* path);
+static DataType get_data_type(char* data_type_str);
+static Array decode_accessors(Object main_obj, char* path);
+static Array extract_elements(Accessor obj_accessor);
+static Face* create_faces(Array indices_arr, Topology topology, unsigned int* faces_count);
+static Mesh* decode_mesh(Array accessors, Object main_obj, unsigned int* meshes_count);
+static Texture* collect_textures(Object main_obj, unsigned int* texture_count, char* path);
+static Material* decode_materials(Object main_obj, unsigned int* materials_count, char* path);
+static Scene decode_scene(Object main_obj, char* path);
+Scene decode_gltf(char* path);
 
-typedef struct Object {
-    char* identifier;
-    void* value;
-    ObjectType obj_type;
-    struct Object* children;
-    struct Object* parent;
-    unsigned int children_count;
-} Object;
-
-#define STR_LEN(str, len) while ((str)[len] != '\0') { len++; }
+/* -------------------------------------------------------------------------- */
 
 static void append_obj(Object* parent_obj, Object obj) {
     parent_obj -> children = (Object*) realloc(parent_obj -> children, sizeof(Object) * (parent_obj -> children_count + 1));
     (parent_obj -> children)[parent_obj -> children_count] = obj;
     (parent_obj -> children)[parent_obj -> children_count].parent = parent_obj;
     (parent_obj -> children_count)++;
-    return;
-}
-
-static int s_atoi(char* value) {
-    if (value == NULL) return 0;
-    return atoi(value);
-}
-
-static bool str_to_bool(char* str, char* true_str) {
-    if (!strcmp(str, true_str)) return TRUE;
-    return FALSE;
-}
-
-static void strip(char** str) {
-    unsigned int len = 0;
-    STR_LEN(*str, len);
-
-    len--; // skip the null terminator
-
-    while ((*str)[len] == ' ' || (*str)[len] == '\n' || (*str)[len] == '\r') { len--; }
-    
-    len++; // skip to the position of the last whitespace
-
-    (*str)[len] = '\0';
-
-    len++;
-
-    *str = (char*) realloc(*str, sizeof(char) * (len + 1));
-    
-    unsigned int ind = 0;
-    for (ind = 0; ind < len && ((*str)[ind] == ' ' || (*str)[ind] == '\n' || (*str)[len] == '\r'); ++ind) { }
-    
-    char* new_str = (char*) calloc(len - ind, sizeof(char));
-
-    for (unsigned int i = 0; ind < len; ++i, ++ind) {
-        new_str[i] = (*str)[ind];
-    }
-
-    free(*str);
-    *str = new_str;
-
     return;
 }
 
@@ -111,12 +80,8 @@ static ObjectType get_obj_type(BitStream* bit_stream) {
         }
     }
 
-
     return obj_type;
 }
-
-static void read_identifier(BitStream* bit_stream, Object* objects);
-static void read_dictionary(BitStream* bit_stream, Object* objects);
 
 static void read_array(BitStream* bit_stream, Object* objects) {
     // We can find a collection of dictionary, numbers or strings
@@ -236,7 +201,7 @@ static Object* get_object_by_id(char* id, Object* main_object, bool print_warnin
     return object;
 }
 
-void* get_array(Object* arr_obj, bool use_float) {
+static void* get_array(Object* arr_obj, bool use_float) {
     if (arr_obj == NULL) {
         return NULL;
     }
@@ -255,114 +220,7 @@ static void* get_value(Object* obj) {
     return obj -> value;
 }
 
-typedef struct Array {
-    void** data;
-    unsigned int count;
-} Array;
-
-#define GET_ELEMENT(type, arr, index) ((type) (((arr).data)[index]))
-
-Array init_arr() {
-    Array arr = (Array) { .count = 0 };
-    arr.data = (void**) calloc(1, sizeof(void*));
-    return arr;
-}
-
-void append_element(Array* arr, void* element) {
-    arr -> data = (void**) realloc(arr -> data, sizeof(void*) * (arr -> count + 1));
-    (arr -> data)[arr -> count] = element;
-    (arr -> count)++;
-    return;
-}
-
-void deallocate_arr(Array arr) {
-    debug_print(YELLOW, "deallocating array...\n");
-    free(arr.data);
-    return;
-}
-
-typedef Array Vertices;
-typedef Array Normals;
-typedef Array TextureCoords;
-
-typedef enum Topology { POINTS, LINES, LINE_LOOP, LINE_STRIP, TRIANGLES, TRIANGLE_STRIP, TRIANGLE_FAN } Topology;
-
-typedef struct Face {
-    unsigned int* indices;
-    Topology topology;
-} Face;
-
-typedef struct Mesh {
-    Vertices vertices; // equivalent to the POSITION attribute of glTF meshes
-    Normals normals;
-    TextureCoords texture_coords;
-    Face* faces;
-    unsigned int faces_count;
-    unsigned int material_index;
-} Mesh;
-
-typedef struct Node {
-    Array meshes_indices;
-    struct Node* childrens;
-    unsigned int children_count;
-} Node;
-
-typedef struct RGB {
-    unsigned char R;
-    unsigned char G;
-    unsigned char B;
-} RGB;
-
-typedef enum Filter { NEAREST = 9728, LINEAR, NEAREST_MIPMAP_NEAREST = 9984, LINEAR_MIPMAP_NEAREST, NEAREST_MIPMAP_LINEAR, LINEAR_MIPMAP_LINEAR } Filter;
-typedef enum Wrap { CLAMP_TO_EDGE = 33071, MIRRORED_REPEAT = 33648, REPEAT = 10497 } Wrap;
-
-typedef struct Texture {
-    char* texture_path;
-    Filter mag_filter;
-    Filter min_filter;
-    Wrap wrap_s;
-    Wrap wrap_t;
-    unsigned int tex_coord;
-} Texture;
-
-typedef struct PbrMetallicRoughness {
-    float* base_color_factor;
-    Texture base_color_texture;
-    Texture metallic_roughness_texture;
-    float metallic_factor;
-    float roughness_factor;
-} PbrMetallicRoughness;
-
-typedef struct NormalTextureInfo { 
-    Texture texture;
-    unsigned int scale;
-} NormalTextureInfo;
-
-typedef struct OcclusionTextureInfo { 
-    Texture texture;
-    unsigned int strength;
-} OcclusionTextureInfo;
-
-typedef struct Material {
-    PbrMetallicRoughness pbr_metallic_roughness;
-    NormalTextureInfo normal_texture;
-    OcclusionTextureInfo occlusion_texture;
-    Texture emissive_texture;
-    float* emissive_factor;
-    char* alpha_mode;
-    float alpha_cutoff;
-    bool double_sided;
-} Material;
-
-typedef struct Scene {
-    Node root_node;
-    Mesh* meshes;
-    unsigned int meshes_count;
-    Material* materials;
-    unsigned int materials_count;
-} Scene;
-
-Node create_node(Object* nodes_obj, unsigned int node_index) {
+static Node create_node(Object* nodes_obj, unsigned int node_index) {
     Node node = {0};
     Object* node_obj = nodes_obj -> children + node_index;
 
@@ -396,9 +254,7 @@ Node create_node(Object* nodes_obj, unsigned int node_index) {
     return node;
 }
 
-typedef enum BufferTarget {ARRAY_BUFFER, ELEMENT_ARRAY_BUFFER} BufferTarget;
-
-Array decode_buffer_views(Object main_obj, char* path) {
+static Array decode_buffer_views(Object main_obj, char* path) {
     Array buffer_views = init_arr();
     Array buffers = init_arr();
 
@@ -440,19 +296,7 @@ Array decode_buffer_views(Object main_obj, char* path) {
     return buffer_views;
 }
 
-typedef enum DataType { SCALAR, VEC_2, VEC_3, VEC_4, MAT_2, MAT_3, MAT_4 } DataType;
-unsigned char elements_count[] = { 1, 2, 3, 4, 4, 9, 16 };
-typedef enum ComponentType { BYTE, UNSIGNED_BYTE, SHORT, UNSIGNED_SHORT, UNSIGNED_INT, FLOAT } ComponentType;
-unsigned char byte_lengths[] = { sizeof(char), sizeof(unsigned char), sizeof(short int), sizeof(unsigned short int), sizeof(unsigned int), sizeof(float) };
-
-typedef struct Accessor {
-    void* data;
-    ComponentType component_type;
-    unsigned int elements_count;
-    DataType data_type;
-} Accessor;
-
-DataType get_data_type(char* data_type_str) {
+static DataType get_data_type(char* data_type_str) {
     if (!strcmp("SCALAR", data_type_str)) return SCALAR;
     else if (!strcmp("VEC_2", data_type_str)) return VEC_2;
     else if (!strcmp("VEC_3", data_type_str)) return VEC_3;
@@ -463,7 +307,7 @@ DataType get_data_type(char* data_type_str) {
     else return SCALAR;
 }
 
-Array decode_accessors(Object main_obj, char* path) {
+static Array decode_accessors(Object main_obj, char* path) {
     Array accessors = init_arr();
     Array buffer_views = decode_buffer_views(main_obj, path);
 
@@ -492,7 +336,7 @@ Array decode_accessors(Object main_obj, char* path) {
     return accessors;
 }
 
-Array extract_elements(Accessor obj_accessor) {
+static Array extract_elements(Accessor obj_accessor) {
     Array arr = init_arr();
     for (unsigned int s = 0; s < obj_accessor.elements_count; ++s) {
         unsigned char element_size = elements_count[obj_accessor.data_type];
@@ -517,9 +361,7 @@ Array extract_elements(Accessor obj_accessor) {
     return arr;
 }
 
-unsigned char topology_size[] = { 1, 2, 2, 2, 3, 3, 3 };
-
-Face* create_faces(Array indices_arr, Topology topology, unsigned int* faces_count) {
+static Face* create_faces(Array indices_arr, Topology topology, unsigned int* faces_count) {
     Face* faces = (Face*) calloc(1, sizeof(Face)); 
     unsigned int total_faces = indices_arr.count;
     if (topology == TRIANGLE_STRIP || topology == TRIANGLE_FAN) total_faces -= 2;
@@ -558,7 +400,7 @@ Face* create_faces(Array indices_arr, Topology topology, unsigned int* faces_cou
     return faces;
 }
 
-Mesh* decode_mesh(Array accessors, Object main_obj, unsigned int* meshes_count) {
+static Mesh* decode_mesh(Array accessors, Object main_obj, unsigned int* meshes_count) {
     Mesh* meshes = (Mesh*) calloc(1, sizeof(Mesh));
     Object* meshes_obj = get_object_by_id("meshes", &main_obj, TRUE);
     for (unsigned int i = 0; i < meshes_obj -> children_count; ++i, ++(*meshes_count)) {
@@ -589,7 +431,7 @@ Mesh* decode_mesh(Array accessors, Object main_obj, unsigned int* meshes_count) 
     return meshes;
 }
 
-Texture* collect_textures(Object main_obj, unsigned int* texture_count, char* path) {
+static Texture* collect_textures(Object main_obj, unsigned int* texture_count, char* path) {
     Texture* textures = (Texture*) calloc(1, sizeof(Texture));
     Object* textures_obj = get_object_by_id("textures", &main_obj, TRUE);
     Object* sampler_obj = get_object_by_id("samplers", &main_obj, TRUE);
@@ -612,7 +454,7 @@ Texture* collect_textures(Object main_obj, unsigned int* texture_count, char* pa
     return textures;
 }
 
-Material* decode_materials(Object main_obj, unsigned int* materials_count, char* path) {
+static Material* decode_materials(Object main_obj, unsigned int* materials_count, char* path) {
     Material* materials = (Material*) calloc(1, sizeof(Material));
 
     unsigned int texture_count = 0;
@@ -674,7 +516,7 @@ Material* decode_materials(Object main_obj, unsigned int* materials_count, char*
     return materials;
 }
 
-Scene decode_scene(Object main_obj, char* path) {
+static Scene decode_scene(Object main_obj, char* path) {
     Scene scene = {0};
 
     Array accessors = decode_accessors(main_obj, path);
