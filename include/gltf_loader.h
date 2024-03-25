@@ -719,6 +719,7 @@ Scene decode_gltf(char* path) {
     Scene scene = {0};
 
     if (get_next_bytes_us(bit_stream) != (unsigned short int)(('{' << 8) | '\n')) {
+        error_print("invalid gltf file\n");
         deallocate_bit_stream(bit_stream);
         return scene; 
     }
