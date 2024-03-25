@@ -705,7 +705,7 @@ Scene decode_scene(Object main_obj, char* path) {
     return scene;
 }
 
-void decode_gltf(char* path) {
+Scene decode_gltf(char* path) {
     char* file_path = (char*) calloc(175, sizeof(char));
     int len = snprintf(file_path, 175, "%sscene.gltf", path);
     file_path = (char*) realloc(file_path, sizeof(char) * len);
@@ -716,19 +716,20 @@ void decode_gltf(char* path) {
     BitStream* bit_stream = allocate_bit_stream(file_data.data, file_data.size, FALSE);
     deallocate_file(&file_data, FALSE);
 
+    Scene scene = {0};
+
     if (get_next_bytes_us(bit_stream) != (unsigned short int)(('{' << 8) | '\n')) {
         deallocate_bit_stream(bit_stream);
-        return; 
+        return scene; 
     }
 
     Object default_object = (Object) { .children = calloc(1, sizeof(Object)), .children_count = 0, .parent = NULL, .value = NULL, .identifier = "main", .obj_type = DICTIONARY };
     read_dictionary(bit_stream, &default_object);
     deallocate_bit_stream(bit_stream);
 
-    Scene scene = decode_scene(default_object, path);
-    (void)scene;
+    scene = decode_scene(default_object, path);
 
-    return;
+    return scene;
 }
 
 #endif //_GLTF_LOADER_H_
