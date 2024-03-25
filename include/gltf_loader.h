@@ -6,6 +6,8 @@
 #include "./utils.h"
 #include "./file_io.h"
 
+/* -------------------------------------------------------------------------- */
+
 static void append_obj(Object* parent_obj, Object obj);
 static ObjectType get_obj_type(BitStream* bit_stream);
 static void read_array(BitStream* bit_stream, Object* objects);

@@ -5,6 +5,8 @@
 #include <stdlib.h>
 #include "./types.h"
 
+/* -------------------------------------------------------------------------- */
+
 int s_atoi(char* value);
 bool str_to_bool(char* str, char* true_str);
 void strip(char** str);
