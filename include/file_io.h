@@ -7,7 +7,7 @@
 #include "./types.h"
 #include "./debug_print.h"
 
-bool read_file(File* file_data) {
+bool read_model_file(File* file_data) {
     FILE* file;
 
     int err = 0;

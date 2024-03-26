@@ -272,7 +272,7 @@ static Array decode_buffer_views(Object main_obj, char* path) {
         buffer_data.file_path = (char*) calloc(350, sizeof(char));
         int len = snprintf(buffer_data.file_path, 350, "%s%s", path, uri);
         buffer_data.file_path = (char*) realloc(buffer_data.file_path, sizeof(char) * len);
-        read_file(&buffer_data);
+        read_model_file(&buffer_data);
         
         BitStream* bit_stream = allocate_bit_stream(buffer_data.data, byte_length, TRUE);
         append_element(&buffers, (void*) bit_stream);
@@ -558,7 +558,7 @@ Scene decode_gltf(char* path) {
     file_path = (char*) realloc(file_path, sizeof(char) * len);
 
     File file_data = (File) {.file_path = file_path};
-    read_file(&file_data);
+    read_model_file(&file_data);
 
     BitStream* bit_stream = allocate_bit_stream(file_data.data, file_data.size, FALSE);
     deallocate_file(&file_data, FALSE);
