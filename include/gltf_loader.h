@@ -21,7 +21,7 @@ static Node create_node(Object* nodes_obj, unsigned int node_index);
 static Array decode_buffer_views(Object main_obj, char* path);
 static DataType get_data_type(char* data_type_str);
 static Array decode_accessors(Object main_obj, char* path);
-static Array extract_elements(Accessor obj_accessor);
+static ArrayExtended extract_elements(Accessor obj_accessor);
 static Face* create_faces(Array indices_arr, Topology topology, unsigned int* faces_count);
 static Mesh* decode_mesh(Array accessors, Object main_obj, unsigned int* meshes_count);
 static Texture* collect_textures(Object main_obj, unsigned int* texture_count, char* path);
@@ -340,7 +340,7 @@ static Array decode_accessors(Object main_obj, char* path) {
     return accessors;
 }
 
-static Array extract_elements(Accessor obj_accessor) {
+static ArrayExtended extract_elements(Accessor obj_accessor) {
     Array arr = init_arr();
     for (unsigned int s = 0; s < obj_accessor.elements_count; ++s) {
         unsigned char element_size = elements_count[obj_accessor.data_type];
@@ -362,7 +362,8 @@ static Array extract_elements(Accessor obj_accessor) {
         
         append_element(&arr, element);
     }
-    return arr;
+
+    return (ArrayExtended) { .arr = arr, .component_type = obj_accessor.component_type, .data_type = obj_accessor.data_type };
 }
 
 static Face* create_faces(Array indices_arr, Topology topology, unsigned int* faces_count) {
@@ -425,7 +426,7 @@ static Mesh* decode_mesh(Array accessors, Object main_obj, unsigned int* meshes_
             Accessor* tex_coords_accessor = GET_ELEMENT(Accessor*, accessors, tex_coords_index);
             meshes[i].texture_coords = extract_elements(*tex_coords_accessor);
             Accessor* indices_accessor = GET_ELEMENT(Accessor*, accessors, indices_index);
-            Array indices_arr = extract_elements(*indices_accessor);
+            Array indices_arr = extract_elements(*indices_accessor).arr;
             meshes[i].faces_count = 0;
             meshes[i].faces = create_faces(indices_arr, topology, &(meshes[i].faces_count));
             meshes[i].material_index = material_index;

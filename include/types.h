@@ -47,9 +47,15 @@ typedef struct Array {
     unsigned int count;
 } Array;
 
-typedef Array Vertices;
-typedef Array Normals;
-typedef Array TextureCoords;
+typedef struct ArrayExtended {
+    Array arr;
+    DataType data_type;
+    ComponentType component_type;
+} ArrayExtended;
+
+typedef ArrayExtended Vertices;
+typedef ArrayExtended Normals;
+typedef ArrayExtended TextureCoords;
 
 typedef struct Face {
     unsigned int* indices;
