@@ -3,7 +3,7 @@
 
 typedef unsigned char bool;
 
-typedef enum DecodingError {NO_ERROR, FILE_NOT_FOUND, INVALID_FILE_TYPE, FILE_ERROR, INVALID_MARKER_LENGTH, INVALID_QUANTIZATION_TABLE_NUM, INVALID_HUFFMAN_TABLE_NUM, INVALID_IMAGE_SIZE, EXCEEDED_LENGTH, UNSUPPORTED_JPEG_TYPE, INVALID_DEPTH_COLOR_COMBINATION, INVALID_CHUNK_LENGTH, INVALID_COMPRESSION_METHOD, INVALID_FILTER_METHOD, INVALID_INTERLACE_METHOD, INVALID_IEND_CHUNK_SIZE, DECODING_ERROR} DecodingError; 
+typedef enum BitStreamError {NO_ERROR, EXCEEDED_LENGTH} BitStreamError; 
 typedef enum Filter { NEAREST = 9728, LINEAR, NEAREST_MIPMAP_NEAREST = 9984, LINEAR_MIPMAP_NEAREST, NEAREST_MIPMAP_LINEAR, LINEAR_MIPMAP_LINEAR } Filter;
 typedef enum Topology { POINTS, LINES, LINE_LOOP, LINE_STRIP, TRIANGLES, TRIANGLE_STRIP, TRIANGLE_FAN } Topology;
 typedef enum ComponentType { BYTE, UNSIGNED_BYTE, SHORT, UNSIGNED_SHORT, UNSIGNED_INT, FLOAT } ComponentType;
@@ -13,7 +13,6 @@ typedef enum DataType { SCALAR, VEC_2, VEC_3, VEC_4, MAT_2, MAT_3, MAT_4 } DataT
 typedef enum Colors {RED = 31, GREEN, YELLOW, BLUE, PURPLE, CYAN, WHITE} Colors;
 typedef enum BufferTarget {ARRAY_BUFFER, ELEMENT_ARRAY_BUFFER} BufferTarget;
 
-const char* err_codes[] = {"NO_ERROR", "FILE_NOT_FOUND", "INVALID_FILE_TYPE", "FILE_ERROR", "INVALID_MARKER_LENGTH", "INVALID_QUANTIZATION_TABLE_NUM", "INVALID_HUFFMAN_TABLE_NUM", "INVALID_IMAGE_SIZE", "EXCEEDED_LENGTH", "UNSUPPORTED_JPEG_TYPE", "INVALID_DEPTH_COLOR_COMBINATION", "INVALID_CHUNK_LENGTH", "INVALID_COMPRESSION_METHOD", "INVALID_FILTER_METHOD", "INVALID_INTERLACE_METHOD", "INVALID_IEND_CHUNK_SIZE", "DECODING_ERROR"};
 unsigned char byte_lengths[] = { sizeof(char), sizeof(unsigned char), sizeof(short int), sizeof(unsigned short int), sizeof(unsigned int), sizeof(float) };
 const char* objs_types[] = {"ARRAY", "STRING", "NUMBER", "DICTIONARY", "INVALID_OBJECT"};
 unsigned char elements_count[] = { 1, 2, 3, 4, 4, 9, 16 };
@@ -31,7 +30,7 @@ typedef struct BitStream {
     unsigned char bit;
     unsigned int size;
     unsigned char current_byte;
-    DecodingError error;
+    BitStreamError error;
 } BitStream;
 
 typedef struct Object {
@@ -71,12 +70,6 @@ typedef struct Node {
     struct Node* childrens;
     unsigned int children_count;
 } Node;
-
-typedef struct RGB {
-    unsigned char R;
-    unsigned char G;
-    unsigned char B;
-} RGB;
 
 typedef struct Texture {
     char* texture_path;
