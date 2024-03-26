@@ -1,37 +1,11 @@
-#ifndef _GLTF_LOADER_H_
-#define _GLTF_LOADER_H_
+#ifdef _GLTF_LIB_
 
-#include "./debug_print.h"
 #include "./bitstream.h"
-#include "./utils.h"
+#include "./debug_print.h"
 #include "./file_io.h"
-
-/* -------------------------------------------------------------------------- */
-
-static void append_obj(Object* parent_obj, Object obj);
-static ObjectType get_obj_type(BitStream* bit_stream);
-static void read_array(BitStream* bit_stream, Object* objects);
-static void read_dictionary(BitStream* bit_stream, Object* objects);
-static void read_identifier(BitStream* bit_stream, Object* objects);
-static Object* get_object_from_identifier(char* identifier, Object* object);
-static Object* get_object_by_id(char* id, Object* main_object, bool print_warning);
-static void* get_array(Object* arr_obj, bool use_float);
-static void* get_value(Object* obj);
-static Node create_node(Object* nodes_obj, unsigned int node_index);
-static Array decode_buffer_views(Object main_obj, char* path);
-static DataType get_data_type(char* data_type_str);
-static Array decode_accessors(Object main_obj, char* path);
-static Array extract_elements(Accessor obj_accessor);
-static Face* create_faces(Array indices_arr, Topology topology, unsigned int* faces_count);
-static Mesh* decode_mesh(Array accessors, Object main_obj, unsigned int* meshes_count);
-static Texture* collect_textures(Object main_obj, unsigned int* texture_count, char* path);
-static Material* decode_materials(Object main_obj, unsigned int* materials_count, char* path);
-static Scene decode_scene(Object main_obj, char* path);
-Scene decode_gltf(char* path);
-
-/* -------------------------------------------------------------------------- */
-
-#ifndef _GLTF_LIB_
+#include "./types.h"
+#include "./utils.h"
+#include "./gltf_loader.h"
 
 static void append_obj(Object* parent_obj, Object obj) {
     parent_obj -> children = (Object*) realloc(parent_obj -> children, sizeof(Object) * (parent_obj -> children_count + 1));
@@ -580,5 +554,3 @@ Scene decode_gltf(char* path) {
 }
 
 #endif //_GLTF_LIB_
-
-#endif //_GLTF_LOADER_H_
