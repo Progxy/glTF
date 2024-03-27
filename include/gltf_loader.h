@@ -246,11 +246,15 @@ static Node create_node(Object* nodes_obj, unsigned int node_index) {
     Object* meshes = get_object_by_id("mesh", node_obj, FALSE);
     if (meshes != NULL) {
         node.meshes_indices = init_arr();
-        unsigned int meshes_count = meshes -> children_count;
-        for (unsigned int i = 0; i < meshes_count; ++i) {
-            unsigned int mesh_index = atoi((char*) ((meshes -> children)[i].value));
-            append_element(&(node.meshes_indices), &mesh_index);
+        if (meshes -> obj_type == ARRAY) {
+            unsigned int meshes_count = meshes -> children_count;
+            for (unsigned int i = 0; i < meshes_count; ++i) {
+                unsigned int mesh_index = atoi((char*) ((meshes -> children)[i].value));
+                append_element(&(node.meshes_indices), &mesh_index);
+            }
         }
+        unsigned int mesh_index = atoi((char*) (meshes -> value));
+        append_element(&(node.meshes_indices), &mesh_index);
     } else {
         node.meshes_indices = (Array) { .count = 0, .data = NULL };
     }
