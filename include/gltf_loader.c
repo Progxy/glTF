@@ -220,11 +220,17 @@ static Node create_node(Object* nodes_obj, unsigned int node_index) {
     Object* meshes = get_object_by_id("mesh", node_obj, FALSE);
     if (meshes != NULL) {
         node.meshes_indices = init_arr();
-        unsigned int meshes_count = meshes -> children_count;
-        for (unsigned int i = 0; i < meshes_count; ++i) {
-            unsigned int mesh_index = atoi((char*) ((meshes -> children)[i].value));
-            append_element(&(node.meshes_indices), &mesh_index);
+        if (meshes -> obj_type == ARRAY) {
+            unsigned int meshes_count = meshes -> children_count;
+            for (unsigned int i = 0; i < meshes_count; ++i) {
+                unsigned int* mesh_index = (unsigned int*) calloc(1, sizeof(unsigned int));
+                *mesh_index = atoi((char*) ((meshes -> children)[i].value));
+                append_element(&(node.meshes_indices), mesh_index);
+            }
         }
+        unsigned int* mesh_index = (unsigned int*) calloc(1, sizeof(unsigned int));
+        *mesh_index = atoi((char*) (meshes -> value));
+        append_element(&(node.meshes_indices), mesh_index);
     } else {
         node.meshes_indices = (Array) { .count = 0, .data = NULL };
     }
@@ -276,33 +282,32 @@ static Array decode_buffer_views(Object main_obj, char* path) {
 
 static DataType get_data_type(char* data_type_str) {
     if (!strcmp("SCALAR", data_type_str)) return SCALAR;
-    else if (!strcmp("VEC_2", data_type_str)) return VEC_2;
-    else if (!strcmp("VEC_3", data_type_str)) return VEC_3;
-    else if (!strcmp("VEC_4", data_type_str)) return VEC_4;
-    else if (!strcmp("MAT_2", data_type_str)) return MAT_2;
-    else if (!strcmp("MAT_3", data_type_str)) return MAT_3;
-    else if (!strcmp("MAT_4", data_type_str)) return MAT_4;
+    else if (!strcmp("VEC2", data_type_str)) return VEC2;
+    else if (!strcmp("VEC3", data_type_str)) return VEC3;
+    else if (!strcmp("VEC4", data_type_str)) return VEC4;
+    else if (!strcmp("MAT2", data_type_str)) return MAT2;
+    else if (!strcmp("MAT3", data_type_str)) return MAT3;
+    else if (!strcmp("MAT4", data_type_str)) return MAT4;
     else return SCALAR;
 }
 
-static Array decode_accessors(Object main_obj, char* path) {
-    Array accessors = init_arr();
+static void decode_accessors(Object main_obj, char* path, Array* accessors) {
     Array buffer_views = decode_buffer_views(main_obj, path);
 
     Object* accessors_obj = get_object_by_id("accessors", &main_obj, TRUE);
     for (unsigned int i = 0; i < accessors_obj -> children_count; ++i) {
         unsigned int buffer_view_index = atoi((char*) (get_object_by_id("bufferView", accessors_obj -> children + i, TRUE) -> value));
-        unsigned int component_type = atoi((char*) (get_object_by_id("componentType", accessors_obj -> children + i, TRUE) -> value)) % 5120;
-        unsigned int elements_count = atoi((char*) (get_object_by_id("count", accessors_obj -> children + i, TRUE) -> value));
+        ComponentType component_type = atoi((char*) (get_object_by_id("componentType", accessors_obj -> children + i, TRUE) -> value)) % 5120;
+        unsigned int total_elements = atoi((char*) (get_object_by_id("count", accessors_obj -> children + i, TRUE) -> value));
         unsigned int byte_offset = s_atoi((char*)(get_value(get_object_by_id("byteOffset", accessors_obj -> children + i, TRUE))));
         DataType data_type = get_data_type((char*) (get_object_by_id("type", accessors_obj -> children + i, TRUE) -> value));
         BitStream* buffer_view_stream = GET_ELEMENT(BitStream*, buffer_views, buffer_view_index);
         buffer_view_stream -> byte = byte_offset;
 
         Accessor* accessor = (Accessor*) calloc(1, sizeof(Accessor));
-        *accessor = (Accessor) { .component_type = component_type, .elements_count = elements_count, .data_type = data_type };
-        accessor -> data = get_next_n_byte(buffer_view_stream, elements_count, byte_lengths[component_type]);
-        append_element(&accessors, (void*) accessor);
+        *accessor = (Accessor) { .component_type = component_type, .elements_count = total_elements, .data_type = data_type };
+        accessor -> data = get_next_n_byte(buffer_view_stream, total_elements * elements_count[data_type], byte_lengths[component_type]);
+        append_element(accessors, accessor);
     }
 
     // Deallocate buffers
@@ -311,33 +316,40 @@ static Array decode_accessors(Object main_obj, char* path) {
     }
     deallocate_arr(buffer_views);
     
-    return accessors;
+    return;
 }
 
-static ArrayExtended extract_elements(Accessor obj_accessor) {
-    Array arr = init_arr();
+static void extract_elements(Accessor obj_accessor, ArrayExtended* arr_ext) {
+    arr_ext -> arr = init_arr();
     for (unsigned int s = 0; s < obj_accessor.elements_count; ++s) {
         unsigned char element_size = elements_count[obj_accessor.data_type];
         unsigned char byte_size = byte_lengths[obj_accessor.component_type];
         void* element = calloc(element_size, byte_size);
-        unsigned char* data = ((unsigned char*) obj_accessor.data) + (s * element_size * byte_size);
+        unsigned char* data = (unsigned char*) (obj_accessor.data); 
+        unsigned int offset = s * element_size * byte_size;
 
-        for (unsigned int t = 0; t < element_size; ++t) {
-            if (byte_size == BYTE) ((char*) element)[t] = data[t * element_size * byte_size];
-            else if (byte_size == UNSIGNED_BYTE) ((unsigned char*) element)[t] = data[t * element_size * byte_size];
-            else if (byte_size == SHORT) ((short int*) element)[t] = (data[t * element_size * byte_size] << 8) + data[t * element_size * byte_size + 1];
-            else if (byte_size == UNSIGNED_SHORT) ((unsigned short int*) element)[t] = (data[t * element_size * byte_size] << 8) + data[t * element_size * byte_size + 1];
-            else if (byte_size == UNSIGNED_INT) ((unsigned int*) element)[t] = (data[t * element_size * byte_size] << 24) + (data[t * element_size * byte_size + 1] << 16) + (data[t * element_size * byte_size + 2] << 8) + data[t * element_size * byte_size + 3];
-            else if (byte_size == FLOAT) {
-                unsigned int value = (data[t * element_size * byte_size] << 24) + (data[t * element_size * byte_size + 1] << 16) + (data[t * element_size * byte_size + 2] << 8) + data[t * element_size * byte_size + 3];
+        for (unsigned char t = 0; t < element_size; ++t) {
+            unsigned int current_index = (t * element_size * byte_size) + offset;
+            if (obj_accessor.component_type == BYTE) ((char*) element)[t] = data[current_index];
+            else if (obj_accessor.component_type == UNSIGNED_BYTE) ((unsigned char*) element)[t] = data[current_index];
+            else if (obj_accessor.component_type == SHORT) ((short int*) element)[t] = (data[current_index + 1] << 8) + data[current_index + 1];
+            else if (obj_accessor.component_type == UNSIGNED_SHORT) ((unsigned short int*) element)[t] = (data[current_index + 1] << 8) + data[current_index];
+            else if (obj_accessor.component_type == UNSIGNED_INT) {
+                ((unsigned int*) element)[t] = (data[current_index + 3] << 24) + (data[current_index + 2] << 16) + (data[current_index + 1] << 8) + data[current_index];
+                debug_print(YELLOW, "element[%u]: %u\n", t, ((unsigned int*) element)[t]);
+            } else if (obj_accessor.component_type == FLOAT) {
+                unsigned int value = (data[current_index + 3] << 24) + (data[current_index + 2] << 16) + (data[current_index + 1] << 8) + data[current_index];
                 ((float*) element)[t] = *((float*) &value);
             }
         }
         
-        append_element(&arr, element);
+        append_element(&(arr_ext -> arr), element);
     }
 
-    return (ArrayExtended) { .arr = arr, .component_type = obj_accessor.component_type, .data_type = obj_accessor.data_type };
+    arr_ext -> component_type = obj_accessor.component_type; 
+    arr_ext -> data_type = obj_accessor.data_type;
+    
+    return;
 }
 
 static Face* create_faces(Array indices_arr, Topology topology, unsigned int* faces_count) {
@@ -394,15 +406,16 @@ static Mesh* decode_mesh(Array accessors, Object main_obj, unsigned int* meshes_
             unsigned int tex_coords_index = atoi((char*) (get_object_by_id("attributes/TEXCOORD_0", primitives -> children + j, TRUE) -> value));
 
             Accessor* vertex_accessor = GET_ELEMENT(Accessor*, accessors, vertices_index);
-            meshes[i].vertices = extract_elements(*vertex_accessor);            
+            extract_elements(*vertex_accessor, &(meshes[i].vertices));            
             Accessor* normal_accessor = GET_ELEMENT(Accessor*, accessors, normal_index);
-            meshes[i].normals = extract_elements(*normal_accessor);            
+            extract_elements(*normal_accessor, &(meshes[i].normals));            
             Accessor* tex_coords_accessor = GET_ELEMENT(Accessor*, accessors, tex_coords_index);
-            meshes[i].texture_coords = extract_elements(*tex_coords_accessor);
+            extract_elements(*tex_coords_accessor, &(meshes[i].texture_coords));
             Accessor* indices_accessor = GET_ELEMENT(Accessor*, accessors, indices_index);
-            Array indices_arr = extract_elements(*indices_accessor).arr;
+            ArrayExtended indices_arr = {0};
+            extract_elements(*indices_accessor, &indices_arr);
             meshes[i].faces_count = 0;
-            meshes[i].faces = create_faces(indices_arr, topology, &(meshes[i].faces_count));
+            meshes[i].faces = create_faces(indices_arr.arr, topology, &(meshes[i].faces_count));
             meshes[i].material_index = material_index;
         }
     }
@@ -498,7 +511,8 @@ static Material* decode_materials(Object main_obj, unsigned int* materials_count
 static Scene decode_scene(Object main_obj, char* path) {
     Scene scene = {0};
 
-    Array accessors = decode_accessors(main_obj, path);
+    Array accessors = init_arr();
+    decode_accessors(main_obj, path, &accessors);
 
     unsigned int root_node_index = atoi((char*) (get_object_by_id("scenes[0]/nodes[0]", &main_obj, TRUE) -> value));
     debug_print(WHITE, "root node: %u\n", root_node_index);

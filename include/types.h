@@ -6,14 +6,14 @@ typedef unsigned char bool;
 typedef enum BitStreamError {NO_ERROR, EXCEEDED_LENGTH} BitStreamError; 
 typedef enum Filter { NEAREST = 9728, LINEAR, NEAREST_MIPMAP_NEAREST = 9984, LINEAR_MIPMAP_NEAREST, NEAREST_MIPMAP_LINEAR, LINEAR_MIPMAP_LINEAR } Filter;
 typedef enum Topology { POINTS, LINES, LINE_LOOP, LINE_STRIP, TRIANGLES, TRIANGLE_STRIP, TRIANGLE_FAN } Topology;
-typedef enum ComponentType { BYTE, UNSIGNED_BYTE, SHORT, UNSIGNED_SHORT, UNSIGNED_INT, FLOAT } ComponentType;
+typedef enum ComponentType { BYTE, UNSIGNED_BYTE, SHORT, UNSIGNED_SHORT, UNSIGNED_INT = 5, FLOAT } ComponentType;
 typedef enum Wrap { CLAMP_TO_EDGE = 33071, MIRRORED_REPEAT = 33648, REPEAT = 10497 } Wrap;
 typedef enum ObjectType { ARRAY, STRING, NUMBER, DICTIONARY, INVALID_OBJECT } ObjectType;
-typedef enum DataType { SCALAR, VEC_2, VEC_3, VEC_4, MAT_2, MAT_3, MAT_4 } DataType;
+typedef enum DataType { SCALAR, VEC2, VEC3, VEC4, MAT2, MAT3, MAT4 } DataType;
 typedef enum Colors {RED = 31, GREEN, YELLOW, BLUE, PURPLE, CYAN, WHITE} Colors;
 typedef enum BufferTarget {ARRAY_BUFFER, ELEMENT_ARRAY_BUFFER} BufferTarget;
 
-unsigned char byte_lengths[] = { sizeof(char), sizeof(unsigned char), sizeof(short int), sizeof(unsigned short int), sizeof(unsigned int), sizeof(float) };
+unsigned char byte_lengths[] = { sizeof(char), sizeof(unsigned char), sizeof(short int), sizeof(unsigned short int), 0, sizeof(unsigned int), sizeof(float) };
 const char* objs_types[] = {"ARRAY", "STRING", "NUMBER", "DICTIONARY", "INVALID_OBJECT"};
 unsigned char elements_count[] = { 1, 2, 3, 4, 4, 9, 16 };
 unsigned char topology_size[] = { 1, 2, 2, 2, 3, 3, 3 };
