@@ -329,17 +329,15 @@ static void extract_elements(Accessor obj_accessor, ArrayExtended* arr_ext) {
         unsigned int offset = s * element_size * byte_size;
 
         for (unsigned char t = 0; t < element_size; ++t) {
-            unsigned int current_index = (t * element_size * byte_size) + offset;
+            unsigned int current_index = (t * byte_size) + offset;
             if (obj_accessor.component_type == BYTE) ((char*) element)[t] = data[current_index];
             else if (obj_accessor.component_type == UNSIGNED_BYTE) ((unsigned char*) element)[t] = data[current_index];
             else if (obj_accessor.component_type == SHORT) ((short int*) element)[t] = (data[current_index + 1] << 8) + data[current_index + 1];
             else if (obj_accessor.component_type == UNSIGNED_SHORT) ((unsigned short int*) element)[t] = (data[current_index + 1] << 8) + data[current_index];
-            else if (obj_accessor.component_type == UNSIGNED_INT) {
-                ((unsigned int*) element)[t] = (data[current_index + 3] << 24) + (data[current_index + 2] << 16) + (data[current_index + 1] << 8) + data[current_index];
-                debug_print(YELLOW, "element[%u]: %u\n", t, ((unsigned int*) element)[t]);
-            } else if (obj_accessor.component_type == FLOAT) {
+            else if (obj_accessor.component_type == UNSIGNED_INT) ((unsigned int*) element)[t] = (data[current_index + 3] << 24) + (data[current_index + 2] << 16) + (data[current_index + 1] << 8) + data[current_index];
+            else if (obj_accessor.component_type == FLOAT) {
                 unsigned int value = (data[current_index + 3] << 24) + (data[current_index + 2] << 16) + (data[current_index + 1] << 8) + data[current_index];
-                ((float*) element)[t] = *((float*) &value);
+                ((float*) element)[t] = *((float*) (&value));
             }
         }
         
