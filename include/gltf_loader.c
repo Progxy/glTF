@@ -401,12 +401,15 @@ static Mesh* decode_mesh(Array accessors, Object main_obj, unsigned int* meshes_
             unsigned int indices_index = atoi((char*) (get_object_by_id("indices", primitives -> children + j, TRUE) -> value));
             unsigned int vertices_index = atoi((char*) (get_object_by_id("attributes/POSITION", primitives -> children + j, TRUE) -> value));
             unsigned int normal_index = atoi((char*) (get_object_by_id("attributes/NORMAL", primitives -> children + j, TRUE) -> value));
+            unsigned int tangent_index = atoi((char*) (get_object_by_id("attributes/TANGENT", primitives -> children + j, TRUE) -> value));
             unsigned int tex_coords_index = atoi((char*) (get_object_by_id("attributes/TEXCOORD_0", primitives -> children + j, TRUE) -> value));
 
             Accessor* vertex_accessor = GET_ELEMENT(Accessor*, accessors, vertices_index);
             extract_elements(*vertex_accessor, &(meshes[i].vertices));            
             Accessor* normal_accessor = GET_ELEMENT(Accessor*, accessors, normal_index);
             extract_elements(*normal_accessor, &(meshes[i].normals));            
+            Accessor* tangent_accessor = GET_ELEMENT(Accessor*, accessors, tangent_index);
+            extract_elements(*tangent_accessor, &(meshes[i].tangents));            
             Accessor* tex_coords_accessor = GET_ELEMENT(Accessor*, accessors, tex_coords_index);
             extract_elements(*tex_coords_accessor, &(meshes[i].texture_coords));
             Accessor* indices_accessor = GET_ELEMENT(Accessor*, accessors, indices_index);
