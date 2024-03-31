@@ -21,8 +21,8 @@ static Node create_node(Object* nodes_obj, unsigned int node_index);
 static Array decode_buffer_views(Object main_obj, char* path);
 static DataType get_data_type(char* data_type_str);
 static void decode_accessors(Object main_obj, char* path, Array* accessors);
-static void extract_elements(Accessor obj_accessor, ArrayExtended* arr_ext);
-static Face* create_faces(Array indices_arr, Topology topology, unsigned int* faces_count);
+static void extract_elements(Accessor* obj_accessor, ArrayExtended* arr_ext);
+static Face* create_faces(Accessor* indices_accessor, Topology topology, unsigned int* faces_count);
 static Mesh* decode_mesh(Array accessors, Object main_obj, unsigned int* meshes_count);
 static Texture* collect_textures(Object main_obj, unsigned int* texture_count, char* path);
 static Material* decode_materials(Object main_obj, unsigned int* materials_count, char* path);
@@ -334,7 +334,7 @@ static void decode_accessors(Object main_obj, char* path, Array* accessors) {
         append_element(accessors, accessor);
     }
 
-    // Deallocate buffers
+    // Deallocate buffer_views
     for (unsigned int i = 0; i < buffer_views.count; ++i) {
         deallocate_bit_stream(GET_ELEMENT(BitStream*, buffer_views, i));
     }
@@ -343,24 +343,24 @@ static void decode_accessors(Object main_obj, char* path, Array* accessors) {
     return;
 }
 
-static void extract_elements(Accessor obj_accessor, ArrayExtended* arr_ext) {
+static void extract_elements(Accessor* obj_accessor, ArrayExtended* arr_ext) {
     arr_ext -> arr = init_arr();
-    for (unsigned int s = 0; s < obj_accessor.elements_count; ++s) {
-        unsigned char element_size = elements_count[obj_accessor.data_type];
-        unsigned char byte_size = byte_lengths[obj_accessor.component_type];
+    for (unsigned int s = 0; s < obj_accessor -> elements_count; ++s) {
+        unsigned char element_size = elements_count[obj_accessor -> data_type];
+        unsigned char byte_size = byte_lengths[obj_accessor -> component_type];
         void* element = calloc(element_size, byte_size);
-        unsigned char* data = (unsigned char*) (obj_accessor.data); 
+        unsigned char* data = (unsigned char*) (obj_accessor -> data); 
         unsigned int offset = s * element_size * byte_size;
 
         for (unsigned char t = 0; t < element_size; ++t) {
             unsigned int current_index = (t * byte_size) + offset;
-            if (obj_accessor.component_type == BYTE) ((char*) element)[t] = data[current_index];
-            else if (obj_accessor.component_type == UNSIGNED_BYTE) ((unsigned char*) element)[t] = data[current_index];
-            else if (obj_accessor.component_type == SHORT) ((short int*) element)[t] = (data[current_index + 1] << 8) + data[current_index + 1];
-            else if (obj_accessor.component_type == UNSIGNED_SHORT) ((unsigned short int*) element)[t] = (data[current_index + 1] << 8) + data[current_index];
-            else if (obj_accessor.component_type == UNSIGNED_INT) ((unsigned int*) element)[t] = (data[current_index + 3] << 24) + (data[current_index + 2] << 16) + (data[current_index + 1] << 8) + data[current_index];
-            else if (obj_accessor.component_type == FLOAT) {
-                unsigned int value = (data[current_index + 3] << 24) + (data[current_index + 2] << 16) + (data[current_index + 1] << 8) + data[current_index];
+            if (obj_accessor -> component_type == BYTE) ((char*) element)[t] = data[current_index];
+            else if (obj_accessor -> component_type == UNSIGNED_BYTE) ((unsigned char*) element)[t] = data[current_index];
+            else if (obj_accessor -> component_type == SHORT) ((short int*) element)[t] = (short int) GET_US_ELEMENT_LE(data, current_index);
+            else if (obj_accessor -> component_type == UNSIGNED_SHORT) ((unsigned short int*) element)[t] = GET_US_ELEMENT_LE(data, current_index);
+            else if (obj_accessor -> component_type == UNSIGNED_INT) ((unsigned int*) element)[t] = GET_UI_ELEMENT_LE(data, current_index);
+            else if (obj_accessor -> component_type == FLOAT) {
+                unsigned int value = GET_UI_ELEMENT_LE(data, current_index);
                 ((float*) element)[t] = *((float*) (&value));
             }
         }
@@ -368,15 +368,17 @@ static void extract_elements(Accessor obj_accessor, ArrayExtended* arr_ext) {
         append_element(&(arr_ext -> arr), element);
     }
 
-    arr_ext -> component_type = obj_accessor.component_type; 
-    arr_ext -> data_type = obj_accessor.data_type;
+    arr_ext -> component_type = obj_accessor -> component_type; 
+    arr_ext -> data_type = obj_accessor -> data_type;
     
     return;
 }
 
-static Face* create_faces(Array indices_arr, Topology topology, unsigned int* faces_count) {
+static Face* create_faces(Accessor* indices_accessor, Topology topology, unsigned int* faces_count) {
     Face* faces = (Face*) calloc(1, sizeof(Face)); 
-    unsigned int total_faces = indices_arr.count;
+    *faces_count = 0;
+    unsigned char* data = (unsigned char*) (indices_accessor -> data);
+    unsigned int total_faces = indices_accessor -> elements_count;
     if (topology == TRIANGLE_STRIP || topology == TRIANGLE_FAN) total_faces -= 2;
     else if (topology == LINE_STRIP) total_faces -= 1;
     else if (topology == LINES) total_faces /= 2;
@@ -387,27 +389,28 @@ static Face* create_faces(Array indices_arr, Topology topology, unsigned int* fa
         faces[i].topology = topology;
         faces[i].indices = (unsigned int*) calloc(topology_size[topology], sizeof(unsigned int));
         if (topology == LINE_STRIP) {
-            faces[i].indices[0] = *GET_ELEMENT(unsigned int*, indices_arr, i);
-            faces[i].indices[1] = *GET_ELEMENT(unsigned int*, indices_arr, i + 1);
+            faces[i].indices[0] = GET_UI_ELEMENT_LE(data, i * sizeof(unsigned int));
+            faces[i].indices[1] = GET_UI_ELEMENT_LE(data, (i + 1) * sizeof(unsigned int));
         } else if (topology == LINE_LOOP) {
-            faces[i].indices[0] = *GET_ELEMENT(unsigned int*, indices_arr, i);
-            faces[i].indices[1] = *GET_ELEMENT(unsigned int*, indices_arr, (i + 1) % indices_arr.count);
+            faces[i].indices[0] = GET_UI_ELEMENT_LE(data, i * sizeof(unsigned int));
+            faces[i].indices[1] = GET_UI_ELEMENT_LE(data, ((i + 1) % indices_accessor -> elements_count) * sizeof(unsigned int));
         } else if (topology == LINES) {
-            faces[i].indices[0] = *GET_ELEMENT(unsigned int*, indices_arr, 2 * i);
-            faces[i].indices[1] = *GET_ELEMENT(unsigned int*, indices_arr, (2 * i) + 1);
+            faces[i].indices[0] = GET_UI_ELEMENT_LE(data, 2 * i * sizeof(unsigned int));
+            faces[i].indices[1] = GET_UI_ELEMENT_LE(data, ((2 * i) + 1) * sizeof(unsigned int));
         } else if (topology == TRIANGLES) {
-            faces[i].indices[0] = *GET_ELEMENT(unsigned int*, indices_arr, 3 * i);
-            faces[i].indices[1] = *GET_ELEMENT(unsigned int*, indices_arr, (3 * i) + 1);
-            faces[i].indices[2] = *GET_ELEMENT(unsigned int*, indices_arr, (3 * i) + 2);
+            faces[i].indices[0] = GET_UI_ELEMENT_LE(data, 3 * i * sizeof(unsigned int));
+            faces[i].indices[1] = GET_UI_ELEMENT_LE(data, ((3 * i) + 1) * sizeof(unsigned int));
+            faces[i].indices[2] = GET_UI_ELEMENT_LE(data, ((3 * i) + 2) * sizeof(unsigned int));
+            debug_print(YELLOW, "face indices: %u/%u/%u\n", faces[i].indices[0], faces[i].indices[1], faces[i].indices[2]);
         } else if (topology == TRIANGLE_STRIP) {
-            faces[i].indices[0] = *GET_ELEMENT(unsigned int*, indices_arr, i);
-            faces[i].indices[1] = *GET_ELEMENT(unsigned int*, indices_arr, i + (1 + i % 2));
-            faces[i].indices[2] = *GET_ELEMENT(unsigned int*, indices_arr, i + (2 - i % 2));
+            faces[i].indices[0] = GET_UI_ELEMENT_LE(data, i * sizeof(unsigned int));
+            faces[i].indices[1] = GET_UI_ELEMENT_LE(data, (i + (1 + i % 2)) * sizeof(unsigned int));
+            faces[i].indices[2] = GET_UI_ELEMENT_LE(data, (i + (2 - i % 2)) * sizeof(unsigned int));
         } else if (topology == TRIANGLE_FAN) {
-            faces[i].indices[0] = *GET_ELEMENT(unsigned int*, indices_arr, i + 1);
-            faces[i].indices[1] = *GET_ELEMENT(unsigned int*, indices_arr, i + 2);
-            faces[i].indices[2] = *GET_ELEMENT(unsigned int*, indices_arr, 0);
-        } else if (topology == POINTS) faces[i].indices[0] = *GET_ELEMENT(unsigned int*, indices_arr, i);
+            faces[i].indices[0] = GET_UI_ELEMENT_LE(data, (i + 1) * sizeof(unsigned int));
+            faces[i].indices[1] = GET_UI_ELEMENT_LE(data, (i + 2) * sizeof(unsigned int));
+            faces[i].indices[2] = GET_UI_ELEMENT_LE(data, 0);
+        } else if (topology == POINTS) faces[i].indices[0] = GET_UI_ELEMENT_LE(data, i * sizeof(unsigned int));
     }
 
     return faces;
@@ -418,6 +421,8 @@ static Mesh* decode_mesh(Array accessors, Object main_obj, unsigned int* meshes_
     Object* meshes_obj = get_object_by_id("meshes", &main_obj, TRUE);
     for (unsigned int i = 0; i < meshes_obj -> children_count; ++i, ++(*meshes_count)) {
         meshes = (Mesh*) realloc(meshes, sizeof(Mesh) * (*meshes_count + 1));
+        char* mesh_name = (char*) (get_object_by_id("name", meshes_obj -> children + i, TRUE) -> value);
+        debug_print(WHITE, "Mesh name: '%s'\n", mesh_name);
         Object* primitives = get_object_by_id("primitives", meshes_obj -> children + i, TRUE);
         for (unsigned int j = 0; j < primitives -> children_count; ++j) {
             unsigned int material_index = atoi((char*) (get_object_by_id("material", primitives -> children + j, TRUE) -> value));
@@ -429,20 +434,18 @@ static Mesh* decode_mesh(Array accessors, Object main_obj, unsigned int* meshes_
             unsigned int tex_coords_index = atoi((char*) (get_object_by_id("attributes/TEXCOORD_0", primitives -> children + j, TRUE) -> value));
 
             Accessor* vertex_accessor = GET_ELEMENT(Accessor*, accessors, vertices_index);
-            extract_elements(*vertex_accessor, &(meshes[i].vertices));            
+            extract_elements(vertex_accessor, &(meshes[i].vertices));            
             Accessor* normal_accessor = GET_ELEMENT(Accessor*, accessors, normal_index);
-            extract_elements(*normal_accessor, &(meshes[i].normals));            
+            extract_elements(normal_accessor, &(meshes[i].normals));            
             Accessor* tangent_accessor = GET_ELEMENT(Accessor*, accessors, tangent_index);
-            extract_elements(*tangent_accessor, &(meshes[i].tangents));            
+            extract_elements(tangent_accessor, &(meshes[i].tangents));            
             Accessor* tex_coords_accessor = GET_ELEMENT(Accessor*, accessors, tex_coords_index);
-            extract_elements(*tex_coords_accessor, &(meshes[i].texture_coords));
+            extract_elements(tex_coords_accessor, &(meshes[i].texture_coords));
             Accessor* indices_accessor = GET_ELEMENT(Accessor*, accessors, indices_index);
-            ArrayExtended indices_arr = {0};
-            extract_elements(*indices_accessor, &indices_arr);
-            meshes[i].faces_count = 0;
-            meshes[i].faces = create_faces(indices_arr.arr, topology, &(meshes[i].faces_count));
+            meshes[i].faces = create_faces(indices_accessor, topology, &(meshes[i].faces_count));
             meshes[i].material_index = material_index;
         }
+        debug_print(YELLOW, "\n");
     }
 
     return meshes;

@@ -5,6 +5,9 @@
 #include <stdlib.h>
 #include "./types.h"
 
+#define GET_US_ELEMENT_LE(arr, ind) (unsigned short int) (((arr)[(ind) + 1] << 8) + (arr)[(ind)]) 
+#define GET_UI_ELEMENT_LE(arr, ind) (unsigned int) (((arr)[(ind) + 3] << 24) + ((arr)[(ind) + 2] << 16) + ((arr)[(ind) + 1] << 8) + (arr)[(ind)])
+
 /* -------------------------------------------------------------------------- */
 
 int s_atoi(char* value);
