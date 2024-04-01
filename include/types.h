@@ -77,6 +77,7 @@ typedef struct Node {
     Array meshes_indices;
     struct Node* childrens;
     unsigned int children_count;
+    float transformation_matrix[16];
 } Node;
 
 typedef struct Texture {

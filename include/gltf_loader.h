@@ -17,7 +17,7 @@ static Object* get_object_from_identifier(char* identifier, Object* object);
 static Object* get_object_by_id(char* id, Object* main_object, bool print_warning);
 static void* get_array(Object* arr_obj, bool use_float);
 static void* get_value(Object* obj);
-static Node create_node(Object* nodes_obj, unsigned int node_index);
+static Node create_node(Object* nodes_obj, unsigned int node_index, float* parent_matrix);
 static Array decode_buffer_views(Object main_obj, char* path);
 static DataType get_data_type(char* data_type_str);
 static void decode_accessors(Object main_obj, char* path, Array* accessors);
@@ -224,9 +224,29 @@ static void* get_value(Object* obj) {
     return obj -> value;
 }
 
-static Node create_node(Object* nodes_obj, unsigned int node_index) {
+static Node create_node(Object* nodes_obj, unsigned int node_index, float* parent_matrix) {
     Node node = {0};
     Object* node_obj = nodes_obj -> children + node_index;
+
+    Object* matrix_obj = get_object_by_id("matrix", node_obj, FALSE);
+    if (matrix_obj != NULL) {
+        for (unsigned char i = 0; i < 4; ++i) {
+            for (unsigned char j = 0; j < 4; ++j) {
+                node.transformation_matrix[j * 4 + i] = atof((char*)((matrix_obj -> children + (i * 4 + j)) -> value));
+            }
+        }
+
+        float* new_mat = multiply_mat4(parent_matrix, node.transformation_matrix);
+        for (unsigned char i = 0; i < 16; ++i) {
+            node.transformation_matrix[i] = new_mat[i];
+        }
+        
+        free(new_mat);
+    } else {
+        for (unsigned char i = 0; i < 4; ++i) {
+            node.transformation_matrix[i * 4 + i] = 1.0f;
+        }
+    }
 
     // Decode other children
     Object* node_children = get_object_by_id("children", node_obj, FALSE);
@@ -235,7 +255,7 @@ static Node create_node(Object* nodes_obj, unsigned int node_index) {
         node.childrens = (Node*) calloc(node.children_count, sizeof(Node));
         for (unsigned int i = 0; i < node.children_count; ++i) {
             unsigned int child_index = atoi((char*) ((node_children -> children)[i].value));
-            (node.childrens)[i] = create_node(nodes_obj, child_index);
+            (node.childrens)[i] = create_node(nodes_obj, child_index, node.transformation_matrix);
         }
     } else {
         node.children_count = 0;
@@ -401,7 +421,6 @@ static Face* create_faces(Accessor* indices_accessor, Topology topology, unsigne
             faces[i].indices[0] = GET_UI_ELEMENT_LE(data, 3 * i * sizeof(unsigned int));
             faces[i].indices[1] = GET_UI_ELEMENT_LE(data, ((3 * i) + 1) * sizeof(unsigned int));
             faces[i].indices[2] = GET_UI_ELEMENT_LE(data, ((3 * i) + 2) * sizeof(unsigned int));
-            debug_print(YELLOW, "face indices: %u/%u/%u\n", faces[i].indices[0], faces[i].indices[1], faces[i].indices[2]);
         } else if (topology == TRIANGLE_STRIP) {
             faces[i].indices[0] = GET_UI_ELEMENT_LE(data, i * sizeof(unsigned int));
             faces[i].indices[1] = GET_UI_ELEMENT_LE(data, (i + (1 + i % 2)) * sizeof(unsigned int));
@@ -421,8 +440,6 @@ static Mesh* decode_mesh(Array accessors, Object main_obj, unsigned int* meshes_
     Object* meshes_obj = get_object_by_id("meshes", &main_obj, TRUE);
     for (unsigned int i = 0; i < meshes_obj -> children_count; ++i, ++(*meshes_count)) {
         meshes = (Mesh*) realloc(meshes, sizeof(Mesh) * (*meshes_count + 1));
-        char* mesh_name = (char*) (get_object_by_id("name", meshes_obj -> children + i, TRUE) -> value);
-        debug_print(WHITE, "Mesh name: '%s'\n", mesh_name);
         Object* primitives = get_object_by_id("primitives", meshes_obj -> children + i, TRUE);
         for (unsigned int j = 0; j < primitives -> children_count; ++j) {
             unsigned int material_index = atoi((char*) (get_object_by_id("material", primitives -> children + j, TRUE) -> value));
@@ -445,7 +462,6 @@ static Mesh* decode_mesh(Array accessors, Object main_obj, unsigned int* meshes_
             meshes[i].faces = create_faces(indices_accessor, topology, &(meshes[i].faces_count));
             meshes[i].material_index = material_index;
         }
-        debug_print(YELLOW, "\n");
     }
 
     return meshes;
@@ -546,7 +562,7 @@ static Scene decode_scene(Object main_obj, char* path) {
     debug_print(WHITE, "root node: %u\n", root_node_index);
 
     Object* nodes_obj = get_object_by_id("nodes", &main_obj, TRUE);
-    scene.root_node = create_node(nodes_obj, root_node_index);
+    scene.root_node = create_node(nodes_obj, root_node_index, (float*) id_mat);
 
     debug_print(WHITE, "root node: children count: %u, meshes_count: %u\n", scene.root_node.children_count, scene.root_node.meshes_indices.count);
 
