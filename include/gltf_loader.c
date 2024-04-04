@@ -239,9 +239,10 @@ static Node create_node(Object* nodes_obj, unsigned int node_index) {
 
     Object* matrix_obj = get_object_by_id("matrix", node_obj, FALSE);
     if (matrix_obj != NULL) {
-        for (unsigned char i = 0; i < 4; ++i) {
-            for (unsigned char j = 0; j < 4; ++j) {
-                node.transformation_matrix[j * 4 + i] = atof((char*) ((matrix_obj -> children + (i * 4 + j)) -> value));
+        for (unsigned char r = 0; r < 4; ++r) {
+            for (unsigned char c = 0; c < 4; ++c) {
+                unsigned char index = r * 4 + c;
+                node.transformation_matrix[index] = atof((char*) ((matrix_obj -> children + index) -> value));
             }
         }
     } else {
