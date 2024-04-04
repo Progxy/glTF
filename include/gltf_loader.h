@@ -189,7 +189,7 @@ static Object* get_object_by_id(char* id, Object* main_object, bool print_warnin
         
         object = get_object_from_identifier(identifier, object);
         if (object == NULL) {
-            if (print_warning) debug_print(CYAN, "object not found...\n");
+            if (print_warning) debug_print(CYAN, "object '%s' not found...\n", id);
             free(identifier);
             return NULL;
         } else if (index != -1) object = object -> children + index;
@@ -232,21 +232,20 @@ static Node create_node(Object* nodes_obj, unsigned int node_index, float* paren
     if (matrix_obj != NULL) {
         for (unsigned char i = 0; i < 4; ++i) {
             for (unsigned char j = 0; j < 4; ++j) {
-                node.transformation_matrix[j * 4 + i] = atof((char*)((matrix_obj -> children + (i * 4 + j)) -> value));
+                node.transformation_matrix[j * 4 + i] = atof((char*) ((matrix_obj -> children + (i * 4 + j)) -> value));
             }
         }
-
-        float* new_mat = multiply_mat4(parent_matrix, node.transformation_matrix);
-        for (unsigned char i = 0; i < 16; ++i) {
-            node.transformation_matrix[i] = new_mat[i];
-        }
-        
-        free(new_mat);
     } else {
         for (unsigned char i = 0; i < 4; ++i) {
             node.transformation_matrix[i * 4 + i] = 1.0f;
         }
     }
+
+    float* new_mat = multiply_mat4(parent_matrix, node.transformation_matrix);
+    for (unsigned char i = 0; i < 16; ++i) {
+        node.transformation_matrix[i] = new_mat[i];
+    }
+    free(new_mat);
 
     // Decode other children
     Object* node_children = get_object_by_id("children", node_obj, FALSE);
@@ -269,12 +268,14 @@ static Node create_node(Object* nodes_obj, unsigned int node_index, float* paren
         if (meshes -> obj_type == ARRAY) {
             unsigned int meshes_count = meshes -> children_count;
             for (unsigned int i = 0; i < meshes_count; ++i) {
-                unsigned int mesh_index = atoi((char*) ((meshes -> children)[i].value));
-                append_element(&(node.meshes_indices), &mesh_index);
+                unsigned int* mesh_index = (unsigned int*) calloc(1, sizeof(unsigned int));
+                *mesh_index = atoi((char*) ((meshes -> children)[i].value));
+                append_element(&(node.meshes_indices), mesh_index);
             }
         }
-        unsigned int mesh_index = atoi((char*) (meshes -> value));
-        append_element(&(node.meshes_indices), &mesh_index);
+        unsigned int* mesh_index = (unsigned int*) calloc(1, sizeof(unsigned int));
+        *mesh_index = atoi((char*) (meshes -> value));
+        append_element(&(node.meshes_indices), mesh_index);
     } else {
         node.meshes_indices = (Array) { .count = 0, .data = NULL };
     }
