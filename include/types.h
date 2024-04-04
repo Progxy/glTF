@@ -78,6 +78,9 @@ typedef struct Node {
     struct Node* childrens;
     unsigned int children_count;
     float transformation_matrix[16];
+    float translation_vec[3];
+    float rotation_quat[4];\
+    float scale_vec[3];
 } Node;
 
 typedef struct Texture {

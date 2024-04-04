@@ -202,6 +202,41 @@ static Node create_node(Object* nodes_obj, unsigned int node_index, float* paren
     Node node = {0};
     Object* node_obj = nodes_obj -> children + node_index;
 
+    Object* translation_obj = get_object_by_id("translation", node_obj, FALSE);
+    if (translation_obj != NULL) {
+        for (unsigned char i = 0; i < 3; ++i) {
+            node.translation_vec[i] = atof((char*) ((translation_obj -> children + i) -> value));
+        }
+    } else {
+        for (unsigned char i = 0; i < 3; ++i) {
+            node.translation_vec[i] = 0.0f;
+        }
+    }    
+    
+    Object* rotation_obj = get_object_by_id("rotation", node_obj, FALSE);
+    if (rotation_obj != NULL) {
+        node.rotation_quat[0] = atof((char*) ((rotation_obj -> children + 3) -> value));
+        for (unsigned char i = 0; i < 3; ++i) {
+            node.rotation_quat[i + 1] = atof((char*) ((rotation_obj -> children + i) -> value));
+        }
+    } else {
+        node.rotation_quat[3] = 1.0f;
+        for (unsigned char i = 0; i < 3; ++i) {
+            node.rotation_quat[i + 1] = 0.0f;
+        }
+    }
+
+    Object* scale_obj = get_object_by_id("scale", node_obj, FALSE);
+    if (scale_obj != NULL) {
+        for (unsigned char i = 0; i < 3; ++i) {
+            node.scale_vec[i] = atof((char*) ((scale_obj -> children + i) -> value));
+        }
+    } else {
+        for (unsigned char i = 0; i < 3; ++i) {
+            node.scale_vec[i] = 1.0f;
+        }
+    }        
+
     Object* matrix_obj = get_object_by_id("matrix", node_obj, FALSE);
     if (matrix_obj != NULL) {
         for (unsigned char i = 0; i < 4; ++i) {
@@ -215,12 +250,6 @@ static Node create_node(Object* nodes_obj, unsigned int node_index, float* paren
         }
     }
 
-    float* new_mat = multiply_mat4(parent_matrix, node.transformation_matrix);
-    for (unsigned char i = 0; i < 16; ++i) {
-        node.transformation_matrix[i] = new_mat[i];
-    }
-    free(new_mat);
-    
     // Decode other children
     Object* node_children = get_object_by_id("children", node_obj, FALSE);
     if (node_children != NULL) {
