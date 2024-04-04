@@ -17,7 +17,7 @@ static Object* get_object_from_identifier(char* identifier, Object* object);
 static Object* get_object_by_id(char* id, Object* main_object, bool print_warning);
 static void* get_array(Object* arr_obj, bool use_float);
 static void* get_value(Object* obj);
-static Node create_node(Object* nodes_obj, unsigned int node_index, float* parent_matrix);
+static Node create_node(Object* nodes_obj, unsigned int node_index);
 static Array decode_buffer_views(Object main_obj, char* path);
 static DataType get_data_type(char* data_type_str);
 static void decode_accessors(Object main_obj, char* path, Array* accessors);
@@ -224,7 +224,7 @@ static void* get_value(Object* obj) {
     return obj -> value;
 }
 
-static Node create_node(Object* nodes_obj, unsigned int node_index, float* parent_matrix) {
+static Node create_node(Object* nodes_obj, unsigned int node_index) {
     Node node = {0};
     Object* node_obj = nodes_obj -> children + node_index;
 
@@ -283,7 +283,7 @@ static Node create_node(Object* nodes_obj, unsigned int node_index, float* paren
         node.childrens = (Node*) calloc(node.children_count, sizeof(Node));
         for (unsigned int i = 0; i < node.children_count; ++i) {
             unsigned int child_index = atoi((char*) ((node_children -> children)[i].value));
-            (node.childrens)[i] = create_node(nodes_obj, child_index, node.transformation_matrix);
+            (node.childrens)[i] = create_node(nodes_obj, child_index);
         }
     } else {
         node.children_count = 0;
@@ -592,7 +592,7 @@ static Scene decode_scene(Object main_obj, char* path) {
     debug_print(WHITE, "root node: %u\n", root_node_index);
 
     Object* nodes_obj = get_object_by_id("nodes", &main_obj, TRUE);
-    scene.root_node = create_node(nodes_obj, root_node_index, (float*) id_mat);
+    scene.root_node = create_node(nodes_obj, root_node_index);
 
     debug_print(WHITE, "root node: children count: %u, meshes_count: %u\n", scene.root_node.children_count, scene.root_node.meshes_indices.count);
 

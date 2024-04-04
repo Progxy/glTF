@@ -10,7 +10,6 @@
 
 /* -------------------------------------------------------------------------- */
 
-float* multiply_mat4(float* a, float* b);
 int s_atoi(char* value);
 bool str_to_bool(char* str, char* true_str);
 void strip(char** str);
@@ -19,25 +18,6 @@ void append_element(Array* arr, void* element);
 void deallocate_arr(Array arr);
 
 /* -------------------------------------------------------------------------- */
-
-const float id_mat[16] = {
-    1.0f, 0.0f, 0.0f, 0.0f,
-    0.0f, 1.0f, 0.0f, 0.0f,
-    0.0f, 0.0f, 1.0f, 0.0f,
-    0.0f, 0.0f, 0.0f, 1.0f,
-};
-
-float* multiply_mat4(float* a, float* b) {
-    float* new_mat = (float*) calloc(16, sizeof(float));
-    for (unsigned char r = 0; r < 4; ++r) {
-        for (unsigned char c = 0; c < 4; ++c) {
-            for (unsigned char s = 0; s < 4; ++s) {
-                new_mat[r * 4 + c] += a[r * 4 + s] * b[s * 4 + c];
-            }
-        }
-    }
-    return new_mat;
-}
 
 int s_atoi(char* value) {
     if (value == NULL) return 0;
