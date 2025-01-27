@@ -241,15 +241,14 @@ static Node create_node(Object* nodes_obj, unsigned int node_index) {
     
     Object* rotation_obj = get_object_by_id("rotation", node_obj, FALSE);
     if (rotation_obj != NULL) {
-        node.rotation_quat[0] = atof((char*) ((rotation_obj -> children + 3) -> value));
-        for (unsigned char i = 0; i < 3; ++i) {
-            node.rotation_quat[i + 1] = atof((char*) ((rotation_obj -> children + i) -> value));
+        for (unsigned char i = 0; i < 4; ++i) {
+            node.rotation_quat[i] = atof((char*) ((rotation_obj -> children + i) -> value));
         }
     } else {
-        node.rotation_quat[3] = 1.0f;
         for (unsigned char i = 0; i < 3; ++i) {
             node.rotation_quat[i + 1] = 0.0f;
         }
+        node.rotation_quat[3] = 1.0f;
     }
 
     Object* scale_obj = get_object_by_id("scale", node_obj, FALSE);
@@ -265,11 +264,8 @@ static Node create_node(Object* nodes_obj, unsigned int node_index) {
 
     Object* matrix_obj = get_object_by_id("matrix", node_obj, FALSE);
     if (matrix_obj != NULL) {
-        for (unsigned char r = 0; r < 4; ++r) {
-            for (unsigned char c = 0; c < 4; ++c) {
-                unsigned char index = r * 4 + c;
-                node.transformation_matrix[index] = atof((char*) ((matrix_obj -> children + index) -> value));
-            }
+        for (unsigned char i = 0; i < 16; ++i) {
+            node.transformation_matrix[i] = atof((char*) ((matrix_obj -> children + i) -> value));
         }
     } else {
         for (unsigned char i = 0; i < 4; ++i) {
